@@ -8,6 +8,7 @@
 #define MAX_PHONE_LEN 20
 #define MAX_BODY_LEN 300
 
+// Const
 enum MsgDir {
   IN,
   OUT

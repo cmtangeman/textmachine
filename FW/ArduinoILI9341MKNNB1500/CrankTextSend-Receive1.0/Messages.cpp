@@ -2,6 +2,7 @@
 #include <string.h>
 #include <Arduino.h>
 #include <stdlib.h>
+#include "contacts.h"
 
 
 // ---------------- CONFIG ----------------
@@ -22,6 +23,8 @@ static int convoTop = -1;
 extern int readSerial(char result[]);
 extern void text(void);
 extern void receive(void);
+
+extern Contact contactList[MAX_CONTACTS];
 
 // ---------------- HELPERS ----------------
 int findConversation(const char *phone) {
@@ -44,12 +47,16 @@ void moveConversationToTop(int idx) {
   conversations[convoTop] = temp;
 }
 
-void pushMessage(const char *phone, const char *text, MsgDir dir) {
+void pushMessage(const char *phone, const char *text, MsgDir dir) { // Use pointers for O(1) instead of O(n) time complexity
   int idx = findConversation(phone);
 
   if (idx == -1) {
-    if (convoTop + 1 >= MAX_CONVERSATIONS) return;
-
+    if (convoTop + 1 >= MAX_CONVERSATIONS){
+      Serial.println("Conversations full, message not saved!");
+      return; 
+    }
+  // Else if we still have room proceed with adding a new message. 
+  
     convoTop++;
     idx = convoTop;
 
@@ -83,28 +90,48 @@ void pushOutgoingMessage(const char *phone, const char *text) {
 
 // ---------------- UI ----------------
 void messagesMenu() {
-  receive();
-  Serial.println("\nRecent Conversations:");
+
   Serial.println("Type n for new message");
-  Serial.println("Select conversation number:");
+  Serial.println("Type c for contacts");
+  Serial.println("Type r for refresh: ");
+  Serial.println("/nSelect conversation number:");
+ 
   
   for (int i = convoTop; i >= 0; i--) {
+    if(convoTop )
     Serial.print(convoTop - i + 1);
     Serial.print(". ");
+    
+  int idx = findContactName(conversations[i].phone);
+
+  if (idx != -1) {
+    Serial.println(contactList[idx].name);
+  } else {
     Serial.println(conversations[i].phone);
   }
+  }
 
-  char choice[5];
+  
+
+  char choice[3];
   readSerial(choice);
 
   if(choice[0] == 'n'){
     text();
+    return;
+  }else if( choice[0] == 'c'){
+    contactsMenu();
+    return;
+  }else if( choice[0] == 'r'){
+    receive();
+    return;
   }
+  // If they are selecting one of the conversations, here is the logic that prints out that conversation:
 
-  int sel = atoi(choice);
+  int sel = atoi(choice); // ascii to integer
   int idx = convoTop - (sel - 1);
 
-  if (idx < 0 || idx > convoTop) return;
+  if (idx < 0 || idx > convoTop) return; // Invalid cases
 
   Conversation &c = conversations[idx];
 

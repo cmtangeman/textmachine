@@ -1,2 +1,2 @@
-# CrankPhone
-CrankPhone SW/FW/HW
+# TextMachine
+CrankPhone SW/FW/HW/Mech

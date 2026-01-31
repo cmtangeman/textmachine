@@ -1,6 +1,8 @@
 #include "Contacts.h"
+#include "Messages.h"
+#include <string.h> 
 
-static Contact contactList[MAX_CONTACTS];
+ Contact contactList[MAX_CONTACTS];
 static int contactCount = 0;
 
 // Forward declaration (Serial helper from main sketch)
@@ -44,13 +46,37 @@ void viewContacts() {
   }
 }
 
+int findContactPhone(const char* name) {
+    for (int i = 0; i < contactCount; i++) {
+        Serial.print(i + 1);
+        Serial.print(". ");
+
+        if (strcmp(name, contactList[i].name) == 0) {
+            return i; // contactList[i].phone;
+        }
+    }
+    return -1;
+}
+
+int findContactName(const char* phone){
+    for (int i = 0; i < contactCount; i++) {
+        Serial.print(i + 1);
+        Serial.print(". ");
+
+        if (strcmp(phone, contactList[i].phone) == 0) {
+            return i; // contactList[i].phone;
+        }
+    }
+    return -1;
+}
+
 void contactsMenu() {
   Serial.println("\nContacts:");
   Serial.println("1. View");
   Serial.println("2. Add");
   Serial.println("3. Back");
 
-  char choice[10];
+  char choice[2];
   readSerial(choice);
 
   if (choice[0] == '1') {
@@ -58,5 +84,15 @@ void contactsMenu() {
   } else if (choice[0] == '2') {
     addContact();
   }
+    else if (choice[0] == '3'){
+      messagesMenu();
+    }
+}
+
+const char* getContactPhone(int index) {
+  if (index < 0 || index >= contactCount) {
+    return nullptr;
+  }
+  return contactList[index].phone;
 }
 
