@@ -3,15 +3,9 @@
 Crank Text O.S 
 
 This sketch, for the MKR NB 1500 board, can:
-Send a message you send in a serial monitor (make sure the serial monitor is set to send a newline)
-Connect your Arduino with the SIM card, open the serial monitor, and wait for the "READY" message to appear in the monitor. 
-Next, type a message to send and press "return". Make sure the serial monitor is set to send a newline when you press return.
 
-Or: 
-Can receive messages
+Send messages, receive messages, and save contacts and display contact information all through serial monitor. 
 
-Or: 
-Can save contacts and display contacts information. 
 
  Circuit:
  * MKR NB 1500 board
@@ -22,6 +16,8 @@ Can save contacts and display contacts information.
 
 
 */
+
+
 /*
 // Calibrated Value : xCalM = -0.09, xCalC = 333.49yCalM = -0.06, yCalC = 250.6
 #include "SPI.h"
@@ -31,9 +27,8 @@ Can save contacts and display contacts information.
 #include "Math.h"
 
 
-// Put connections here
 
-// ---------- Pins ----------
+// ---------- Connections between screen and arduino ----------
 #define TFT_DC   6
 #define TFT_CS   7
 #define TFT_RST -1
