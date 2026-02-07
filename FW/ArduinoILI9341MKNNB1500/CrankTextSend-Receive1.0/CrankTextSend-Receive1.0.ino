@@ -18,7 +18,7 @@ Send messages, receive messages, and save contacts and display contact informati
 */
 
 
-/*
+
 // Calibrated Value : xCalM = -0.09, xCalC = 333.49yCalM = -0.06, yCalC = 250.6
 #include "SPI.h"
 #include "Adafruit_GFX.h" // -> 
@@ -50,7 +50,7 @@ float xCalC = 333.49, yCalC = 250.6; // y axis crossing points
 int8_t blockWidth = 20; // block size
 int8_t blockHeight = 20;
 int16_t blockX = 0, blockY = 0; // block position (pixels)
-*/
+
 
 
 
@@ -71,6 +71,15 @@ NB nbAccess;
 NB_SMS sms;
 
 void setup() {
+  tft.begin();                 // initialize ILI9341
+  tft.setRotation(ROTATION);   // orientation
+  tft.fillScreen(ILI9341_BLACK);
+
+  ts.begin();                  // initialize touch controller
+  ts.setRotation(ROTATION);
+
+  tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+  tft.setTextSize(2);
   // initialize serial communications and wait for port to open:
   Serial.begin(9600);
   while (!Serial) {
@@ -127,9 +136,11 @@ void receive() {
 
     // Read message bytes and print them
     while ((c = sms.read()) != -1 && i < 299) {
-      senderBody[i++] = (char) c;
+      senderBody[i++] = (char)c;
       Serial.print((char)c);
     }
+
+    senderBody[i] = '\0';
 
     pushMessage(senderNumber, senderBody, IN); 
     // storeIncomingMessage(senderNumber, senderBody);
@@ -138,20 +149,19 @@ void receive() {
     // Delete message from modem memory
     sms.flush();
     Serial.println("MESSAGE DELETED FROM MODEM MEMORY SAVED IN FW/");
+  } else {
+    Serial.println("No new messages");
   }
 
   delay(1000);
-
 }
 
-
-
 void text() {
+  Serial.println("Enter phone number");
+  char remoteNum[20];
+  readSerial(remoteNum);
 
-Serial.println("Enter phone number");
-char remoteNum[20];
-readSerial(remoteNum);
-/*
+  /*
 // 1) Check if input matches a contact
 int idx = findContact(remoteNum);
 if (idx >= 0) {
@@ -171,7 +181,7 @@ if (idx >= 0) {
 
   // SMS text
   Serial.print("Now, enter SMS content: ");
-  
+
   char txtMsg[500];
   readSerial(txtMsg);
   Serial.println(txtMsg);
@@ -183,6 +193,7 @@ if (idx >= 0) {
   pushMessage(remoteNum, txtMsg, OUT);
   Serial.println("\nSent\n");
 }
-void loop(){
-messagesMenu();
+
+void loop() {
+  messagesMenu();
 }
