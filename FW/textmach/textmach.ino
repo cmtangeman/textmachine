@@ -1,33 +1,51 @@
-// Most accurate way is to use 3 points to calibrate position and misalignment
-// However the math is quite cumbersome so will be using 2 points.
-// Use a library for more accuracy and 3-point calibration.
+/*
 
-#include <SPI.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_ILI9341.h>
-#include <XPT2046_Touchscreen.h>
-#include <math.h>
 
-// ---------- Pins ----------
+
+
+*/
+#include "Adafruit_GFX.h" // -> 
+#include "Adafruit_ILI9341.h" // -> Dislpay chip lib
+#include "XPT2046_Touchscreen.h" // -> Touch chip lib 
+#include "SPI.h"
+#include "Math.h"
+
+
 #define TFT_DC   6
 #define TFT_CS   7
-#define TFT_RST  -1
+#define TFT_RST -1
 
-#define TOUCH_CS 5
+#define TS_CS 5
+
+// Derived from calibration.ino
+
+
+// Calibrated using calibrateScreen, only need to do once. 
+// Calibration model: screen = raw * M + C
+float xCalM = -0.063755f, yCalM = -0.089485f; // slope
+float xCalC = 249.84f, yCalC = 333.47f; // intercept
+
+bool menuDrawn = false;
+
+#define MINPRESSURE 700
+
+
+#define SD_CS 0
+
 
 #define ROTATION 2
 
-// ---------- Display / Touch ----------
-Adafruit_ILI9341 tft(TFT_CS, TFT_DC, TFT_RST);
-XPT2046_Touchscreen ts(TOUCH_CS);  // no IRQ
+// Use hardware SPI (on Uno, #13, #12, #11) and the above for CS/DC/RST
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
+XPT2046_Touchscreen ts(TS_CS);
 
-// Calibration model: screen = raw * M + C
-float xCalM = 0.0f, yCalM = 0.0f; // slope
-float xCalC = 0.0f, yCalC = 0.0f; // intercept
 
-int16_t blockWidth  = 20;
-int16_t blockHeight = 20;
-int16_t blockX = 0, blockY = 0;   // block position in pixels
+#include <MKRNB.h> // -> Modem lib
+#include <stdio.h>
+//Initialize library instance
+NB nbAcess;
+NB_SMS sms;
+
 
 struct ScreenPoint {
   int16_t x;
@@ -108,41 +126,20 @@ void calibrateTouchScreen() {
   Serial.print("yCalM="); Serial.print(yCalM, 6); Serial.print(" yCalC="); Serial.println(yCalC, 2);
 }
 
-unsigned long lastFrame = 0;
+unsigned long lastFrame = 0; // ? 
 
-void moveBlock() {
-  int16_t newBlockX = blockX;
-  int16_t newBlockY = blockY;
 
-  if (ts.touched()) {
-    TS_Point p = ts.getPoint();
-    ScreenPoint sp = getScreenCoords(p.x, p.y);
+// 
 
-    newBlockX = sp.x - (blockWidth / 2);
-    newBlockY = sp.y - (blockHeight / 2);
 
-    if (newBlockX < 0) newBlockX = 0;
-    if (newBlockX > (int16_t)(tft.width() - blockWidth))  newBlockX = tft.width() - blockWidth;
-
-    if (newBlockY < 0) newBlockY = 0;
-    if (newBlockY > (int16_t)(tft.height() - blockHeight)) newBlockY = tft.height() - blockHeight;
-  }
-
-  if ((abs(newBlockX - blockX) > 2) || (abs(newBlockY - blockY) > 2)) {
-    tft.fillRect(blockX, blockY, blockWidth, blockHeight, ILI9341_BLACK);
-    blockX = newBlockX;
-    blockY = newBlockY;
-    tft.fillRect(blockX, blockY, blockWidth, blockHeight, ILI9341_RED);
-  }
-}
 
 void setup() {
   Serial.begin(9600);
 
   pinMode(TFT_CS, OUTPUT);
-  pinMode(TOUCH_CS, OUTPUT);
+  pinMode(TS_CS, OUTPUT);
   digitalWrite(TFT_CS, HIGH);
-  digitalWrite(TOUCH_CS, HIGH);
+  digitalWrite(TS_CS, HIGH);
 
   tft.begin();
   tft.setRotation(ROTATION);
@@ -151,25 +148,105 @@ void setup() {
   ts.begin();
   ts.setRotation(ROTATION);
 
-  calibrateTouchScreen();
+  // calibrateTouchScreen();
 
   // draw initial block
-  tft.fillRect(blockX, blockY, blockWidth, blockHeight, ILI9341_RED);
+  
 
-  lastFrame = millis();
+  // lastFrame = millis();
+
 }
+/*
+void menuScreen(){
+  // Messages button
+  TS_Point p;
+  ScreenPoint sp;
+
+  
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(2);
+  tft.fillScreen(ILI9341_BLACK);
+  tft.fillRect(0, 60, 240, 40, ILI9341_BLUE);
+  tft.fillRect(0,110,240,40,ILI9341_BLUE);
+  tft.setCursor(0+5,80);
+  tft.println("Messages");
+  tft.setCursor(0+5, 120);
+  tft.println("Compose");
+
+
+    if (ts.touched()) {
+    TS_Point p = ts.getPoint();
+    sp = getScreenCoords(p.x, p.y);
+    Serial.println(sp.x);Serial.println(sp.y);
+    
+      if (sp.y > 59 && sp.y < 101) {
+        tft.fillScreen(ILI9341_BLUE);
+        tft.setCursor(0,0);
+        tft.setTextColor(ILI9341_WHITE);
+        tft.println("Messages touched");
+        delay(500);
+        return;
+      }
+      if (sp.y > 110 && sp.y < 150) {
+        tft.fillScreen(ILI9341_BLACK);
+        tft.setCursor(0,0);
+        tft.println("Other button touched");
+        delay(500);
+        menuDrawn = false;
+        return;
+      }
+  
+}
+}
+*/
+
 
 void loop() {
-  // limit frame rate to ~50 FPS (20ms)
-  while ((millis() - lastFrame) < 20) { /* wait */ }
-  lastFrame = millis();
+  // Limit frame rate to 50FPS
+ //  while ((millis() - lastFrame) < 20) { /* wait */ }
+  // lastFrame = millis();
+  // Draw once and then wait for touch
 
-  moveBlock();
+
+  if(!menuDrawn){
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(2);
+  tft.fillScreen(ILI9341_BLACK);
+  tft.fillRect(0, 60, 240, 40, ILI9341_BLUE);
+  tft.fillRect(0,110,240,40,ILI9341_BLUE);
+  tft.setCursor(0+5,80);
+  tft.println("Messages");
+  tft.setCursor(0+5, 120);
+  tft.println("Compose");
+ 
+    menuDrawn = true;
+  }   
+
+
     TS_Point p;
     ScreenPoint sp;
     if (ts.touched()) {
     TS_Point p = ts.getPoint();
     sp = getScreenCoords(p.x, p.y);
+
     Serial.println(sp.x);Serial.println(sp.y);
+          if (sp.y > 59 && sp.y < 101) {
+        tft.fillScreen(ILI9341_BLUE);
+        tft.setCursor(0,0);
+        tft.setTextColor(ILI9341_WHITE);
+        tft.println("Messages touched");
+        delay(500);
+        menuDrawn = false;
+        return;
+      }
+      if (sp.y > 110 && sp.y < 150) {
+        tft.fillScreen(ILI9341_BLACK);
+        tft.setCursor(0,0);
+        tft.println("Other button touched");
+        delay(500);
+        menuDrawn = false;
+        return;
+      }
 }
+
 }

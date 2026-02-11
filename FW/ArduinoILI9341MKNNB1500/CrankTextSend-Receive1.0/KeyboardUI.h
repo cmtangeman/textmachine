@@ -1,2 +1,0 @@
-// Screen state machine
-// State 

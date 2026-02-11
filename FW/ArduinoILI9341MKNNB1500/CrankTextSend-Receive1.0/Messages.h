@@ -2,6 +2,7 @@
 #define MESSAGES_H
 
 #include <Arduino.h>
+#include "buttons.h"   // <-- gives ScreenPoint
 
 #define MAX_CONVERSATIONS 10
 #define MAX_MESSAGES_PER_CONVO 20
@@ -28,9 +29,11 @@ struct MessageThread {
 
 // API
 void pushMessage(const char *phone, const char *text, MsgDir dir);
-void viewRecents();
+
 void openConversation(int selection);
-void messagesMenu();
+void uiTick(const ScreenPoint& sp, bool touched);
+
+
 void convo();
 
 

@@ -85,7 +85,7 @@ void contactsMenu() {
     addContact();
   }
     else if (choice[0] == '3'){
-      messagesMenu();
+      return;
     }
 }
 

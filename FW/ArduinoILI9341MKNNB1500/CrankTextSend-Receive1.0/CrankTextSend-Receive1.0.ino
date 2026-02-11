@@ -17,14 +17,14 @@ Send messages, receive messages, and save contacts and display contact informati
 
 */
 
-
-
-// Calibrated Value : xCalM = -0.09, xCalC = 333.49yCalM = -0.06, yCalC = 250.6
 #include "SPI.h"
 #include "Adafruit_GFX.h" // -> 
 #include "Adafruit_ILI9341.h" // -> Dislpay chip lib
 #include "XPT2046_Touchscreen.h" // -> Touch chip lib 
 #include "Math.h"
+
+#include "buttons.h"
+#include "touchCal.h"
 
 
 
@@ -36,24 +36,15 @@ Send messages, receive messages, and save contacts and display contact informati
 #define TS_CS 5
 
 
-#define ROTATION 3
-
+#define ROTATION 2
 
 // Use hardware SPI (on Uno, #13, #12, #11) and the above for CS/DC/RST
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
 XPT2046_Touchscreen ts(TS_CS);
 
-// calibration values
-float xCalM = -0.09, yCalM = -0.06; // gradients
-float xCalC = 333.49, yCalC = 250.6; // y axis crossing points
+Button button;
 
-int8_t blockWidth = 20; // block size
-int8_t blockHeight = 20;
-int16_t blockX = 0, blockY = 0; // block position (pixels)
-
-
-
-
+// ------------------------------------------------------------
 // Include the NB library
 #include <stdio.h>
 
@@ -69,22 +60,41 @@ int16_t blockX = 0, blockY = 0; // block position (pixels)
 // initialize the library instance
 NB nbAccess;
 NB_SMS sms;
+// ------------------------------------------------------------
+
+#include <SD.h>
+
+#define SD_CS 0
+
 
 void setup() {
-  tft.begin();                 // initialize ILI9341
-  tft.setRotation(ROTATION);   // orientation
+
+  
+
+  tft.begin();                 // initialize ILI9341 display
+  tft.setRotation(ROTATION);      // Orientation
   tft.fillScreen(ILI9341_BLACK);
 
-  ts.begin();                  // initialize touch controller
+  ts.begin();                  // Initialize XPT2046 touch
   ts.setRotation(ROTATION);
 
   tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
   tft.setTextSize(2);
+
   // initialize serial communications and wait for port to open:
   Serial.begin(9600);
   while (!Serial) {
     ; // wait for serial port to connect. Needed for native USB port only
   }
+
+  if(!SD.begin(SD_CS)) {
+    Serial.println("SD FAIL");
+  }
+
+  Serial.println("SD OK");
+  File f = SD.open("/boot.txt", FILE_WRITE);
+  f.println("CrankText boot OK");
+  f.close();
 
   // connection state
   bool connected = false;
@@ -94,14 +104,33 @@ void setup() {
     if (nbAccess.begin("") == NB_READY) {
       connected = true;
     } else {
-      Serial.println("Not connected");
+      tft.println("Not connected");
       delay(1000);
     }
   }
-  Serial.println("CrankText - NB initialized");
+
+  Serial.print(F("Circles (filled)         "));
+  Serial.println(testFilledCircles(10, ILI9341_MAGENTA));
+
+ 
+
 }
 
-// Prototyping 
+  unsigned long testFilledCircles(uint8_t radius, uint16_t color) {
+  unsigned long start;
+  int x, y, w = tft.width(), h = tft.height(), r2 = radius * 2;
+
+  tft.fillScreen(ILI9341_BLACK);
+  start = micros();
+  for(x=radius; x<w; x+=r2) {
+    for(y=radius; y<h; y+=r2) {
+      tft.fillCircle(x, y, radius, color);
+    }
+  }
+
+  return micros() - start;
+}
+
 int readSerial(char result[]) {
   int i = 0;
   while (1) {
@@ -129,15 +158,18 @@ void receive() {
   // If there are any SMSs available()
   if (sms.available()) {
     Serial.println("Message received from:");
+    tft.println("Message received from:");
 
     // Get remote number
     sms.remoteNumber(senderNumber, 20);
     Serial.println(senderNumber);
+    tft.println(senderNumber);
 
     // Read message bytes and print them
     while ((c = sms.read()) != -1 && i < 299) {
       senderBody[i++] = (char)c;
       Serial.print((char)c);
+      tft.print((char)c);
     }
 
     senderBody[i] = '\0';
@@ -145,21 +177,23 @@ void receive() {
     pushMessage(senderNumber, senderBody, IN); 
     // storeIncomingMessage(senderNumber, senderBody);
     Serial.println("\nEND OF MESSAGE");
+    tft.println("\nEND OF MESSAGE");
 
     // Delete message from modem memory
     sms.flush();
     Serial.println("MESSAGE DELETED FROM MODEM MEMORY SAVED IN FW/");
+    tft.println("MESSAGE DELETED FROM MODEM MEMORY SAVED IN FW/");
   } else {
     Serial.println("No new messages");
+    tft.println("No new messages");
   }
 
   delay(1000);
 }
 
-void text() {
-  Serial.println("Enter phone number");
-  char remoteNum[20];
-  readSerial(remoteNum);
+
+void text(char* remoteNum) {
+
 
   /*
 // 1) Check if input matches a contact
@@ -179,21 +213,33 @@ if (idx >= 0) {
 }
 */
 
+
   // SMS text
   Serial.print("Now, enter SMS content: ");
-
+  tft.print("Now, enter SMS content: ");
+  
   char txtMsg[500];
   readSerial(txtMsg);
+
   Serial.println(txtMsg);
+  tft.println(txtMsg);
 
   // send the message
   sms.beginSMS(remoteNum);
   sms.print(txtMsg);
   sms.endSMS();
   pushMessage(remoteNum, txtMsg, OUT);
+
   Serial.println("\nSent\n");
+  tft.println("\nSent\n");
 }
 
+
+
 void loop() {
-  messagesMenu();
+  ScreenPoint sp;
+  bool touched = readTouch(sp);
+
+  uiTick(sp, touched);   // or messagesMenu(sp, touched) if you haven't renamed yet
 }
+
