@@ -17,7 +17,7 @@
 #define TS_CS 5
 
 
-#define ROTATION 3
+#define ROTATION 1
 
 
 // Use hardware SPI (on Uno, #13, #12, #11) and the above for CS/DC/RST

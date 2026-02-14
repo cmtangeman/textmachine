@@ -1,0 +1,13 @@
+#ifndef KEYBOARD_H
+#define KEYBOARD_H
+
+struct ScreenPoint;
+
+bool keyboardTick(const ScreenPoint& sp, bool touched);
+const char* keyboardGetText(void);
+void keyboardReset(void);
+
+// NEW: lets your UI state handle back without changing keyboardTick() return type
+bool keyboardBackPressed(const ScreenPoint& sp);
+
+#endif

@@ -210,9 +210,7 @@ if (idx >= 0) {
 }else{
     Serial.println("Not a valid number or contact");
     messagesMenu();
-}
-*/
-
+}*/
 
   // SMS text
   Serial.print("Now, enter SMS content: ");

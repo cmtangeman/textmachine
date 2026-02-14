@@ -15,7 +15,7 @@
 
 #define TOUCH_CS 5
 
-#define ROTATION 2
+#define ROTATION 1
 
 // ---------- Display / Touch ----------
 Adafruit_ILI9341 tft(TFT_CS, TFT_DC, TFT_RST);
