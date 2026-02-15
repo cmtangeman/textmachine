@@ -6,6 +6,7 @@ struct ScreenPoint;
 bool keyboardTick(const ScreenPoint& sp, bool touched);
 const char* keyboardGetText(void);
 void keyboardReset(void);
+void keyboardClearText(void);
 
 // NEW: lets your UI state handle back without changing keyboardTick() return type
 bool keyboardBackPressed(const ScreenPoint& sp);

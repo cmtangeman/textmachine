@@ -18,8 +18,12 @@ static const int KEY_GAP = 2;
 
 static const int MAX_TEXT = 160;
 
-// Buttons: 10 + 9 + 7 + 3 = 29
-static Button kbKeys[29];
+
+
+// Buttons: 10 + 9 + 7 + 3 = 29 
+// static Button kbKeys[31];
+static Button kbKeys[41];
+
 static Button kbBackBtn;
 static Button toButton;
 static Button msgButton;
@@ -27,6 +31,8 @@ static Button switchkeyboardButton;
 
 
 static bool kbDrawn = false;
+
+static bool msgOrNumber = false;
 
 
 // text buffer **?
@@ -41,13 +47,28 @@ static bool kbTapEdge(bool touched) {
   wasTouched = true;
   return true;
 }
+
+// Typing actual message content 
 static void drawTypedLine() {
   // Clear typed line area ONLY (don’t wipe the header)
   // Typed line sits at y=44..68
-  tft.fillRect(56, 44, tft.width() - 56, 24, ILI9341_BLACK);
-  tft.setCursor(56, 46);
+  tft.fillRect(76, 0, tft.width() - 56, 34, ILI9341_WHITE);
+  tft.fillRect(0, 44, tft.width(), 34, ILI9341_MAGENTA); // Active bar
+  tft.setCursor(0, 46);
   tft.setTextSize(2);
-  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextColor(ILI9341_BLACK);
+  tft.print(typed);
+}
+
+// Typing phone numbers 
+static void drawTypedLineNum() {
+  // Clear typed line area ONLY (don’t wipe the header)
+  // Typed line sits at y=44..68
+  tft.fillRect(76, 0, tft.width() - 56, 34, ILI9341_MAGENTA); // Active Bar
+  tft.fillRect(0, 44, tft.width(), 34, ILI9341_WHITE); 
+  tft.setCursor(80, 0); // Active text
+  tft.setTextSize(2);
+  tft.setTextColor(ILI9341_BLACK);
   tft.print(typed);
 }
 
@@ -58,15 +79,27 @@ static void appendChar(char c) {
 
   Serial.print("KEY: ");
   Serial.println(c);
-
-  drawTypedLine();   // <- this actually prints the whole typed buffer
+  if(msgOrNumber){
+  drawTypedLine();
+  }else{
+  drawTypedLineNum();   // <- First we start off with the phone #
   }
+}
 
 static void backspaceChar() {
   if (typedLen <= 0) return;
   typedLen--;
   typed[typedLen] = '\0';
   Serial.println("KEY: <BKSP>");
+  if (msgOrNumber) drawTypedLine();
+  else             drawTypedLineNum();
+
+}
+
+void keyboardClearText(void) {
+  typedLen = 0;
+  typed[0] = '\0';
+  msgOrNumber = true;
 }
 
 
@@ -81,18 +114,18 @@ static void drawKeyboard() {
   tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(2);
 
-  // Header
+  // Bac,
   kbBackBtn.initButton(6, 6, 36, 36, "<");
 
-  tft.setCursor(60, 10);
-  tft.print("Compose");
 
   tft.setCursor(6, 46);
   tft.print("To:");
   // typed line prints after "To:"
   typedLen = 0;
   typed[0] = '\0';
-  drawTypedLine();
+  if (msgOrNumber) drawTypedLine();
+  else             drawTypedLineNum();
+
 
   int idx = 0;
 
@@ -115,8 +148,8 @@ static void drawKeyboard() {
   }
 
   // Row 3: ZXCVBNM (7) more indent
-  const char* r3 = "ZXCVBNM";
-  for (int i = 0; i < 7; i++) {
+  const char* r3 = "ZXCVBNM+-";
+  for (int i = 0; i < 9; i++) {
     int x = KB_X + (KEY_W) + i * (KEY_W + KEY_GAP);
     int y = KB_Y + 2 * (KEY_H + KEY_GAP);
     char label[2] = { r3[i], '\0' };
@@ -125,10 +158,20 @@ static void drawKeyboard() {
 
   // Bottom row: SPACE, BKSP, SEND (3)
   int yb = KB_Y + 3 * (KEY_H + KEY_GAP);
+  
 
   kbKeys[idx++].initButton(KB_X + 0,   yb, 200, KEY_H, "SPACE");
   kbKeys[idx++].initButton(KB_X + 202, yb, 56,  KEY_H, "BKSP");
   kbKeys[idx++].initButton(KB_X + 260, yb, 54,  KEY_H, "SEND");
+
+  // NEW: Digits row (10) below bottom row
+  int yd = KB_Y + 4 * (KEY_H + KEY_GAP);
+  const char* d = "1234567890";
+  for (int i = 0; i < 10; i++) {
+    int x = KB_X + i * (KEY_W + KEY_GAP);
+    char label[2] = { d[i], '\0' };
+    kbKeys[idx++].initButton(x, yd, KEY_W, KEY_H, label); // indices 31..40
+  }
 
   kbDrawn = true;
 }
@@ -142,7 +185,6 @@ bool keyboardBackPressed(const ScreenPoint& sp) {
 // Returns true if "SEND" pressed.
 bool keyboardTick(const ScreenPoint& sp, bool touched) {
   if (!kbDrawn) drawKeyboard();
-  
   if (!kbTapEdge(touched)) return false;
 
   // Back button click -- handled in UI state instead)
@@ -151,49 +193,29 @@ bool keyboardTick(const ScreenPoint& sp, bool touched) {
     return false;
   }*/ 
 
-  for (int i = 0; i < 29; i++) {
+  // Check each key and check if inputted was one of the clicked keys
+  for (int i = 0; i < 41; i++) {
     if (!kbKeys[i].isClicked(sp)) continue; // EX : key 3 is clicked so we 
 
-    // Letters 0..25
-    if (i <= 25) {
-      char c;
-      if (i < 10)        c = "QWERTYUIOP"[i];
-      else if (i < 19)   c = "ASDFGHJKL"[i - 10];
-      else               c = "ZXCVBNM"[i - 19];
-      Serial.print("Key index "); Serial.print(i);
-      Serial.print(" -> char "); Serial.println(c);
-
-      appendChar(c);
-      
-      return false;
-    }
-
-    // SPACE
-    if (i == 26) {
-      Serial.print("Key index "); Serial.print(i);
-      
-      appendChar(' ');
-      
-      return false;
-    }
-
-    // BKSP
-    if (i == 27) {
-      backspaceChar();
-      Serial.print("Key index "); Serial.print(i);
-      
-      return false;
-    }
-
-    // SEND
-    if (i == 28) {
-      Serial.print("SEND: ");
-      Serial.println(typed);
-      return true;
-    }
-  }
-
+if (i <= 27) {
+  char c;
+  if (i < 10)        c = "QWERTYUIOP"[i];
+  else if (i < 19)   c = "ASDFGHJKL"[i - 10];
+  else if (i <28)         c = "ZXCVBNM+-"[i - 19];
+  appendChar(c);
   return false;
+}
+
+if (i == 28) { appendChar(' '); return false; }
+if (i == 29) { backspaceChar(); return false; }
+if (i == 30) { Serial.println(typed); return true; }
+
+  if (i >= 31 && i <= 40) {
+    char c = "1234567890"[i - 31];
+    appendChar(c);
+    return false;
+  }
+}
 }
 
 const char* keyboardGetText(void) {
@@ -204,4 +226,5 @@ void keyboardReset(void) {
   kbDrawn = false;
   typedLen = 0;
   typed[0] = '\0';
+  msgOrNumber = false;
 }

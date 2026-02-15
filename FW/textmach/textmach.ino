@@ -34,7 +34,7 @@ float xCalC = 249.84f, yCalC = 333.47f; // intercept
 float xCalM_landscape = -0.089715f, yCalM_landscape = -0.065381f; // slope
 float xCalC_landscape =356.25f, yCalC_landscape = 246.22; // intercept 
 bool menuDrawn = false;
-
+bool numberAquired = false;
 
 
 #define SD_CS 0
@@ -258,7 +258,7 @@ void loop() {
     
     TS_Point p = ts.getPoint();
     sp = getScreenCoords(p.x, p.y);
-    // spLandscape = getScreenCoordsLandscape(p.x,p.y);
+    spLandscape = getScreenCoordsLandscape(p.x,p.y);
 
     /*Serial.println(sp.x);
     Serial.println(sp.y); Debug coordinates, right now touch is ok. */
@@ -279,10 +279,10 @@ void loop() {
       }
 
       if (compBtn.isClicked(sp)) {
-        keyboardReset();
-        keyboardTick(sp, ts.touched());
-        ts.setRotation(1); // landscape mode!
+        ts.setRotation(1); // landscape mode
         currentState = UI_COMPOSE;
+        keyboardReset(); // reset
+        keyboardTick(sp, ts.touched());
         return;
       }
       if (refreshBtn.isClicked(sp)) {
@@ -312,33 +312,36 @@ void loop() {
         break;
       }
       case UI_COMPOSE:     {
-        bool numberAquired = false;
         if(!numberAquired){
-        if (keyboardBackPressed(sp)) {
+        if (keyboardBackPressed(spLandscape)) {
         currentState = UI_MENU;   //  go back to menu
         menuDrawn = false;        // force redraw
-        keyboardReset();
+        return;
         } 
-        if (keyboardTick(sp, ts.touched())){
+       if (keyboardTick(spLandscape, ts.touched())){
        const char* kb = keyboardGetText();
        strncpy(recipientNumber, kb, MAX_PHONE_LEN - 1);
        recipientNumber[MAX_PHONE_LEN - 1] = '\0';
        numberAquired = true;
-       keyboardReset();
+       keyboardClearText();
+       Serial.print("Phone # aquired");
         }
         }else if(numberAquired){
-        if (keyboardBackPressed(sp)) {
+        if (keyboardBackPressed(spLandscape)) {
         currentState = UI_MENU;   //  go back to menu
         menuDrawn = false;        // force redraw
-        keyboardReset();
-        break;
+        return;
         } 
-        if (keyboardTick(sp, ts.touched())){
+        if (keyboardTick(spLandscape, ts.touched())){
         const char* kb2 = keyboardGetText();
         strncpy(msgBody, kb2, MAX_BODY_LEN - 1);
         msgBody[MAX_BODY_LEN - 1] = '\0';
-        text(msgBody, recipientNumber);
+        text(recipientNumber, msgBody);
+        Serial.println("TextSent");
         numberAquired = false;
+        keyboardReset();
+        numberAquired = false;
+        return;
         }
 
         }
