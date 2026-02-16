@@ -15,6 +15,8 @@
 
 #include "buttons.h"
 
+#include "messages.h"
+
 
 #define TFT_DC   6
 #define TFT_CS   7
@@ -48,6 +50,7 @@ XPT2046_Touchscreen ts(TS_CS);
 
 #define MAX_PHONE_LEN 20      // includes null
 #define MAX_BODY_LEN 161      // 160 + null
+#define MAX_BODY_RECEIVE_LEN 300 // Max amount of a received message 
 
   static char recipientNumber[MAX_PHONE_LEN];
   static char msgBody[MAX_BODY_LEN];
@@ -155,43 +158,56 @@ void receive() {
   char senderNumber[20];
   char senderBody[300];
   int i = 0;
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextSize(2);
+  tft.fillScreen(ILI9341_BLACK);
 
   // If there are any SMSs available()
   if (sms.available()) {
+    Serial.println("Message received from:");
     tft.println("Message received from:");
 
     // Get remote number
     sms.remoteNumber(senderNumber, 20);
+    Serial.println(senderNumber);
     tft.println(senderNumber);
 
     // Read message bytes and print them
     while ((c = sms.read()) != -1 && i < 299) {
       senderBody[i++] = (char)c;
+      Serial.print((char)c);
       tft.print((char)c);
     }
 
     senderBody[i] = '\0';
 
-    // pushMessage(senderNumber, senderBody, IN); 
+    pushMessage(senderNumber, senderBody, IN); 
     // storeIncomingMessage(senderNumber, senderBody);
-    
+    Serial.println("\nEND OF MESSAGE");
     tft.println("\nEND OF MESSAGE");
 
     // Delete message from modem memory
     sms.flush();
+    Serial.println("MESSAGE DELETED FROM MODEM MEMORY SAVED IN FW/");
     tft.println("MESSAGE DELETED FROM MODEM MEMORY SAVED IN FW/");
   } else {
+    Serial.println("No new messages");
     tft.println("No new messages");
   }
 
   delay(1000);
 }
 
-
 void text(const char* remoteNum, const char* message) {
   sms.beginSMS(remoteNum);
   sms.print(message);
   sms.endSMS();
+  //Serial.println("Message:");
+  //Serial.println(message);
+  //Serial.println("To:");
+  //Serial.println(remoteNum);
+  pushMessage(remoteNum, message, OUT);
+
 }// What to assign char* to -> can it not be a fixed arrray?
 /*
 
@@ -268,9 +284,10 @@ void loop() {
     case UI_MENU: {
 
         if (msgBtn.isClicked(sp)) {
+          // Display recents chronologically and 
         tft.fillScreen(ILI9341_BLACK);
         tft.setCursor(40,0);
-        tft.println("To: ");
+        tft.println("Messages: ");
         tft.setCursor(0,0);
         tft.setTextColor(ILI9341_WHITE);
         backBtn.initButton(0, 0, 36, 36, "<");
@@ -286,11 +303,11 @@ void loop() {
         return;
       }
       if (refreshBtn.isClicked(sp)) {
-        tft.fillScreen(ILI9341_YELLOW);
+        tft.fillScreen(ILI9341_BLACK);
         tft.setCursor(0,0);
         receive();
-        delay(500);
-        menuDrawn = false;
+        currentState = UI_MENU;   //  go back to menu
+        menuDrawn = false;        // force redraw
         return;
       }
 
@@ -305,10 +322,19 @@ void loop() {
       break;
      }
       case UI_MESSAGES: {
+        // Same back btn logic 
         if (backBtn.isClicked(sp)) {
-        currentState = UI_MENU;   //  go back to menu
-        menuDrawn = false;        // force redraw
+        currentState = UI_MENU;   
+        menuDrawn = false;     
+        return;   
         }
+
+        if(recentMessagesScreen(sp, ts.touched())){
+        currentState = UI_MENU;   
+        menuDrawn = false;     
+        return;             
+        }
+
         break;
       }
       case UI_COMPOSE:     {
@@ -336,6 +362,8 @@ void loop() {
         const char* kb2 = keyboardGetText();
         strncpy(msgBody, kb2, MAX_BODY_LEN - 1);
         msgBody[MAX_BODY_LEN - 1] = '\0';
+
+        // Once keyboard interface has done its job we send it over to the text function
         text(recipientNumber, msgBody);
         Serial.println("TextSent");
         numberAquired = false;

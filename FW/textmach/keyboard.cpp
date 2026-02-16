@@ -147,7 +147,7 @@ static void drawKeyboard() {
     kbKeys[idx++].initButton(x, y, KEY_W, KEY_H, label);
   }
 
-  // Row 3: ZXCVBNM (7) more indent
+  // Row 3: ZXCVBNM+- (7) more indent
   const char* r3 = "ZXCVBNM+-";
   for (int i = 0; i < 9; i++) {
     int x = KB_X + (KEY_W) + i * (KEY_W + KEY_GAP);
@@ -156,20 +156,20 @@ static void drawKeyboard() {
     kbKeys[idx++].initButton(x, y, KEY_W, KEY_H, label);
   }
 
-  // Bottom row: SPACE, BKSP, SEND (3)
+  // Row 4: Space backspace and send 
   int yb = KB_Y + 3 * (KEY_H + KEY_GAP);
   
-
+  // Row 5: numbers 0-9
   kbKeys[idx++].initButton(KB_X + 0,   yb, 200, KEY_H, "SPACE");
   kbKeys[idx++].initButton(KB_X + 202, yb, 56,  KEY_H, "BKSP");
   kbKeys[idx++].initButton(KB_X + 260, yb, 54,  KEY_H, "SEND");
 
-  // NEW: Digits row (10) below bottom row
+  // NEW: Digits row 4 (10) below bottom row
   int yd = KB_Y + 4 * (KEY_H + KEY_GAP);
-  const char* d = "1234567890";
+  const char* r4 = "1234567890";
   for (int i = 0; i < 10; i++) {
     int x = KB_X + i * (KEY_W + KEY_GAP);
-    char label[2] = { d[i], '\0' };
+    char label[2] = { r4[i], '\0' };
     kbKeys[idx++].initButton(x, yd, KEY_W, KEY_H, label); // indices 31..40
   }
 
@@ -195,26 +195,22 @@ bool keyboardTick(const ScreenPoint& sp, bool touched) {
 
   // Check each key and check if inputted was one of the clicked keys
   for (int i = 0; i < 41; i++) {
-    if (!kbKeys[i].isClicked(sp)) continue; // EX : key 3 is clicked so we 
+    if (!kbKeys[i].isClicked(sp)) continue; // EX : key 3 is clicked so we continue
 
-if (i <= 27) {
-  char c;
-  if (i < 10)        c = "QWERTYUIOP"[i];
-  else if (i < 19)   c = "ASDFGHJKL"[i - 10];
-  else if (i <28)         c = "ZXCVBNM+-"[i - 19];
-  appendChar(c);
-  return false;
-}
+    if (i <= 27 || i > 30) { // If its not space enter or backspace
+      char c;
+      if (i < 10)        c = "QWERTYUIOP"[i];
+      else if (i < 19)   c = "ASDFGHJKL"[i - 10];
+      else if (i <28)    c = "ZXCVBNM+-"[i - 19]; // Character i matching with button i clicked
+      else               c = "1234567890"[i - 31];
+      appendChar(c);
+      return false;
+    }
 
-if (i == 28) { appendChar(' '); return false; }
-if (i == 29) { backspaceChar(); return false; }
-if (i == 30) { Serial.println(typed); return true; }
+    if (i == 28) { appendChar(' '); return false; }
+    if (i == 29) { backspaceChar(); return false; }
+    if (i == 30) { Serial.println(typed); return true; }
 
-  if (i >= 31 && i <= 40) {
-    char c = "1234567890"[i - 31];
-    appendChar(c);
-    return false;
-  }
 }
 }
 

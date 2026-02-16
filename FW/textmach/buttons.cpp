@@ -17,6 +17,11 @@ void Button::initButton(int xPos, int yPos, int butWidth, int butHeight, const c
   render();
 }
 
+static Button backBtn;
+
+  void drawBackBtn(){
+  backBtn.initButton(0, 0, 36, 36, "<");
+  }
 
 void Button::render() {
   tft.fillRect(x, y, width, height, ILI9341_MAGENTA);
