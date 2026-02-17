@@ -38,6 +38,8 @@ float xCalC_landscape =356.25f, yCalC_landscape = 246.22; // intercept
 bool menuDrawn = false;
 bool numberAquired = false;
 
+int displayConvo = 0;
+
 
 #define SD_CS 0
 
@@ -52,8 +54,8 @@ XPT2046_Touchscreen ts(TS_CS);
 #define MAX_BODY_LEN 161      // 160 + null
 #define MAX_BODY_RECEIVE_LEN 300 // Max amount of a received message 
 
-  static char recipientNumber[MAX_PHONE_LEN];
-  static char msgBody[MAX_BODY_LEN];
+static char recipientNumber[MAX_PHONE_LEN];
+static char msgBody[MAX_BODY_LEN];
 
 #include <MKRNB.h> // -> Modem lib
 #include <stdio.h>
@@ -126,7 +128,7 @@ void setup() {
     if (nbAccess.begin("") == NB_READY) {
       connected = true;
       Serial.print(F("Circles (filled)         "));
-      Serial.println(testFilledCircles(10, ILI9341_MAGENTA));
+      Serial.println(testFilledCircles(10, ILI9341_BLUE));
     } else {
       tft.println("Not connected");
       delay(1000);
@@ -158,13 +160,11 @@ void receive() {
   char senderNumber[20];
   char senderBody[300];
   int i = 0;
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setTextSize(2);
-  tft.fillScreen(ILI9341_BLACK);
 
   // If there are any SMSs available()
   if (sms.available()) {
     Serial.println("Message received from:");
+    tft.println("-----------------");
     tft.println("Message received from:");
 
     // Get remote number
@@ -183,19 +183,21 @@ void receive() {
 
     pushMessage(senderNumber, senderBody, IN); 
     // storeIncomingMessage(senderNumber, senderBody);
-    Serial.println("\nEND OF MESSAGE");
-    tft.println("\nEND OF MESSAGE");
+    // Make space for the message. 
+    tft.println();
+
+    tft.println("-----------------");
+
 
     // Delete message from modem memory
     sms.flush();
     Serial.println("MESSAGE DELETED FROM MODEM MEMORY SAVED IN FW/");
-    tft.println("MESSAGE DELETED FROM MODEM MEMORY SAVED IN FW/");
   } else {
     Serial.println("No new messages");
     tft.println("No new messages");
   }
-
-  delay(1000);
+  delay(500);
+  
 }
 
 void text(const char* remoteNum, const char* message) {
@@ -222,7 +224,8 @@ enum UiState {
   UI_MENU,
   UI_MESSAGES,
   UI_REFRESH,
-  UI_COMPOSE
+  UI_COMPOSE,
+  UI_CONVO
 };
 
 UiState currentState = UI_MENU;
@@ -241,10 +244,9 @@ void loop() {
 
   int c;
 
-
-
   int i = 0;
 
+  static bool isDrawnConvo = false;
 
   // Initial menu draw
   if(!menuDrawn){
@@ -259,85 +261,102 @@ void loop() {
   refreshBtn.initButton(0,160,240,40, "Refresh");
   contactsBtn.initButton(0,210,240,40, "Contacts");
  
-    menuDrawn = true;
+  menuDrawn = true;
   }   
 
 
 
-    TS_Point p;
     ScreenPoint sp;
     ScreenPoint spLandscape;
 
     // Touch Logic / UI FSM\
-    // read touch
-    if (ts.touched()) {
-    
+    // read touch gate click checks.. 
+  if (ts.touched()) {
     TS_Point p = ts.getPoint();
     sp = getScreenCoords(p.x, p.y);
-    spLandscape = getScreenCoordsLandscape(p.x,p.y);
+    spLandscape = getScreenCoordsLandscape(p.x, p.y);
+  }
 
     /*Serial.println(sp.x);
     Serial.println(sp.y); Debug coordinates, right now touch is ok. */
 
     // FSM
     switch(currentState){
+
+
+
     case UI_MENU: {
 
-        if (msgBtn.isClicked(sp)) {
-          // Display recents chronologically and 
-        tft.fillScreen(ILI9341_BLACK);
-        tft.setCursor(40,0);
-        tft.println("Messages: ");
-        tft.setCursor(0,0);
-        tft.setTextColor(ILI9341_WHITE);
-        backBtn.initButton(0, 0, 36, 36, "<");
+        if (ts.touched() && msgBtn.isClicked(sp)) {
+        // Display recents chronologically and 
+        while (ts.touched()) delay(10); // Wait for the transition between screens
         currentState = UI_MESSAGES;
         return; // Dont bother checking other conditions
       }
 
-      if (compBtn.isClicked(sp)) {
+      if (ts.touched() && compBtn.isClicked(sp)) {
         ts.setRotation(1); // landscape mode
         currentState = UI_COMPOSE;
+        while (ts.touched()) delay(10); // Wait for the transition between screens
         keyboardReset(); // reset
         keyboardTick(sp, ts.touched());
         return;
       }
-      if (refreshBtn.isClicked(sp)) {
+      if (ts.touched() && refreshBtn.isClicked(sp)) {
         tft.fillScreen(ILI9341_BLACK);
         tft.setCursor(0,0);
         receive();
+
+
+        while (ts.touched()) delay(10); // Wait for the transition between screens
         currentState = UI_MENU;   //  go back to menu
         menuDrawn = false;        // force redraw
         return;
       }
 
-      if (contactsBtn.isClicked(sp)) {
+      if (ts.touched() && contactsBtn.isClicked(sp)) {
         tft.fillScreen(ILI9341_ORANGE);
         tft.setCursor(0,0);
         tft.println("Other button touched");
-       
         menuDrawn = false;
         return;
       }
       break;
      }
+
       case UI_MESSAGES: {
         // Same back btn logic 
-        if (backBtn.isClicked(sp)) {
+
+        displayConvo = recentMessagesScreen(sp,ts.touched());
+        if (ts.touched() && msgBackBtnPressed(sp)) { // Can reuse this function bc same hitbox although created inside of recentMessagesScreen
         currentState = UI_MENU;   
         menuDrawn = false;     
         return;   
         }
-
-        if(recentMessagesScreen(sp, ts.touched())){
-        currentState = UI_MENU;   
-        menuDrawn = false;     
-        return;             
+        if(displayConvo != -1){
+        while (ts.touched()) delay(10); // Wait for the transition between screens
+        currentState = UI_CONVO;
+        return;
         }
 
         break;
       }
+
+  case UI_CONVO: {
+      if (drawConversationToTFT(sp, ts.touched(), displayConvo, isDrawnConvo)){
+        currentState = UI_MESSAGES;
+        isDrawnConvo = false;  // Reset for next time
+        return;
+      }
+      isDrawnConvo = true;  // Mark as drawn after first call
+      break; 
+  }
+        
+      
+
+
       case UI_COMPOSE:     {
+
         if(!numberAquired){
         if (keyboardBackPressed(spLandscape)) {
         currentState = UI_MENU;   //  go back to menu
@@ -372,7 +391,7 @@ void loop() {
         return;
         }
 
-        }
+        
 
         // 
         
@@ -380,7 +399,7 @@ void loop() {
 
 
     }
-}
+    }
 
 }
 }

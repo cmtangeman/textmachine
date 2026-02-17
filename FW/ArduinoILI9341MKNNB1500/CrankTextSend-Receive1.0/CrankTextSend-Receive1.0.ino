@@ -158,6 +158,7 @@ void receive() {
   // If there are any SMSs available()
   if (sms.available()) {
     Serial.println("Message received from:");
+    tft.println("-----------------");
     tft.println("Message received from:");
 
     // Get remote number
@@ -176,13 +177,12 @@ void receive() {
 
     pushMessage(senderNumber, senderBody, IN); 
     // storeIncomingMessage(senderNumber, senderBody);
-    Serial.println("\nEND OF MESSAGE");
-    tft.println("\nEND OF MESSAGE");
+    tft.println("-----------------");
+
 
     // Delete message from modem memory
     sms.flush();
     Serial.println("MESSAGE DELETED FROM MODEM MEMORY SAVED IN FW/");
-    tft.println("MESSAGE DELETED FROM MODEM MEMORY SAVED IN FW/");
   } else {
     Serial.println("No new messages");
     tft.println("No new messages");

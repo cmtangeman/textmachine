@@ -24,15 +24,20 @@ static int convoSelection = 0;
 extern Contact contactList[MAX_CONTACTS];
 
 extern Adafruit_ILI9341 tft;
+static Button msgBackBtn;
 
 // ----- Forward declarations (so recentMessagesScreen can call these) -----
-static void drawConversationToTFT(int selection);
+void drawConversationToTFT(int selection);
 static int  findThreadByPhone(const char* phone);
 static void moveThreadToTop(int idx);
 static void copyBounded(char* dst, const char* src, size_t dstSize);
 
+bool msgBackBtnPressed(const ScreenPoint& sp) {
+  return msgBackBtn.isClicked(sp);
+}
 
-bool recentMessagesScreen(const ScreenPoint& sp, bool touched) {
+
+int recentMessagesScreen(const ScreenPoint& sp, bool touched) {
   static bool drawn = false;
   static Button threadBtns[MAX_CONVERSATIONS];
   const int listStartY = 50;
@@ -44,8 +49,8 @@ bool recentMessagesScreen(const ScreenPoint& sp, bool touched) {
     tft.fillScreen(ILI9341_BLACK);
     tft.setTextColor(ILI9341_WHITE);
     tft.setTextSize(2);
-    static Button backBtn;
-    backBtn.initButton(0, 0, 36, 36, "<");
+  
+    msgBackBtn.initButton(6, 6, 36, 36, "<");
 
     tft.setCursor(50, 10);
     
@@ -77,14 +82,16 @@ bool recentMessagesScreen(const ScreenPoint& sp, bool touched) {
     drawn = true;
   }
 
+  // Check if button is clicked : 
   for (int rowIndex = 0; rowIndex <= threadTop; rowIndex++) {
     if (threadBtns[rowIndex].isClicked(sp)) {
       convoSelection = rowIndex + 1; // 1..N
       drawn = false;
-      drawConversationToTFT(convoSelection);
-      return true;
+      return convoSelection;
     }
   }
+  return -1;
+
   
 }
 
@@ -92,16 +99,21 @@ bool recentMessagesScreen(const ScreenPoint& sp, bool touched) {
 // Once the selection is true, print out the conversation. 
 // TODO: Add a button to text and pass the phone number to the text program so all
 // that's left is to add the message
-static void drawConversationToTFT(int selection) {
+
+bool drawConversationToTFT(const ScreenPoint& sp, bool touched, int selection, bool drawn) {
+  bool isDrawn = drawn;
+  if (!isDrawn){
   int idx = threadTop - (selection - 1);
-  if (idx < 0 || idx > threadTop) return;
+  if (idx < 0 || idx > threadTop) return true; // TODO: Error case / scroll wheel eventually
 
   MessageThread &t = threads[idx];
-
+  // Display 
+  tft.fillScreen(ILI9341_BLACK);
+  msgBackBtn.initButton(0, 0, 36, 36, "<");
   tft.setCursor(0, 50);
   tft.setTextSize(2);
   tft.setTextColor(ILI9341_WHITE);
-
+  
   // Header: name/number
   int cidx = findContactName(t.phoneNumber);
   if (cidx != -1) tft.println(contactList[cidx].name);
@@ -116,7 +128,20 @@ static void drawConversationToTFT(int selection) {
     tft.print(t.messages[i].dir == IN ? "< " : "> ");
     tft.println(t.messages[i].body);
   }
+  isDrawn = true;
+  }
+
+  if(msgBackBtn.isClicked(sp) && touched){
+    return true; 
+  }
+
+  return false;
 }
+
+
+
+// Non display message storage logic 
+//--------------------------------------------------------------------------------------------------------------------------------------------
 
 // Safe bounded copy that GUARANTEES null-termination.
 static void copyBounded(char *dst, const char *src, size_t dstSize) {

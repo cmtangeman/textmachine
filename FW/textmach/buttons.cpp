@@ -24,7 +24,7 @@ static Button backBtn;
   }
 
 void Button::render() {
-  tft.fillRect(x, y, width, height, ILI9341_MAGENTA);
+  tft.fillRect(x, y, width, height, ILI9341_BLUE);
   tft.setCursor(x + 5, y + 5);
   tft.setTextSize(2);
   tft.setTextColor(ILI9341_WHITE);

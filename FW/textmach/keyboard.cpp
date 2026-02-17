@@ -53,7 +53,7 @@ static void drawTypedLine() {
   // Clear typed line area ONLY (don’t wipe the header)
   // Typed line sits at y=44..68
   tft.fillRect(76, 0, tft.width() - 56, 34, ILI9341_WHITE);
-  tft.fillRect(0, 44, tft.width(), 34, ILI9341_MAGENTA); // Active bar
+  tft.fillRect(0, 44, tft.width(), 34, ILI9341_BLUE); // Active bar
   tft.setCursor(0, 46);
   tft.setTextSize(2);
   tft.setTextColor(ILI9341_BLACK);
@@ -64,7 +64,7 @@ static void drawTypedLine() {
 static void drawTypedLineNum() {
   // Clear typed line area ONLY (don’t wipe the header)
   // Typed line sits at y=44..68
-  tft.fillRect(76, 0, tft.width() - 56, 34, ILI9341_MAGENTA); // Active Bar
+  tft.fillRect(76, 0, tft.width() - 56, 34, ILI9341_BLUE); // Active Bar
   tft.fillRect(0, 44, tft.width(), 34, ILI9341_WHITE); 
   tft.setCursor(80, 0); // Active text
   tft.setTextSize(2);

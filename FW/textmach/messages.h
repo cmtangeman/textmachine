@@ -32,10 +32,11 @@ struct MessageThread {
 
 
 // API
-bool recentMessagesScreen(const ScreenPoint& sp, bool touched);
+int recentMessagesScreen(const ScreenPoint& sp, bool touched);
 void pushMessage(const char *phone, const char *text, MsgDir dir);
 
-void openConversation(int selection);
+bool msgBackBtnPressed(const ScreenPoint& sp);
+bool drawConversationToTFT(const ScreenPoint& sp,bool touched, int selection, bool drawn); // open convo
 void uiTick(const ScreenPoint& sp, bool touched);
 
 
