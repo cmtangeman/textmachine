@@ -89,7 +89,7 @@ ScreenPoint getScreenCoordsLandscape(int16_t rawX, int16_t rawY) {
   // screen = m*raw + c, round to nearest pixel
   int16_t xCoord = (int16_t)lroundf((rawX * xCalM_landscape) + xCalC_landscape);
   int16_t yCoord = (int16_t)lroundf((rawY * yCalM_landscape) + yCalC_landscape);
-
+  
   // clamp to screen
   if (xCoord < 0) xCoord = 0;
   if (xCoord >= (int16_t)tft.width())  xCoord = tft.width() - 1;
@@ -275,6 +275,7 @@ void loop() {
     TS_Point p = ts.getPoint();
     sp = getScreenCoords(p.x, p.y);
     spLandscape = getScreenCoordsLandscape(p.x, p.y);
+
   }
 
     /*Serial.println(sp.x);
@@ -299,7 +300,7 @@ void loop() {
         currentState = UI_COMPOSE;
         while (ts.touched()) delay(10); // Wait for the transition between screens
         keyboardReset(); // reset
-        keyboardTick(sp, ts.touched());
+        keyboardTick(spLandscape, ts.touched());
         return;
       }
       if (ts.touched() && refreshBtn.isClicked(sp)) {
@@ -326,7 +327,6 @@ void loop() {
 
       case UI_MESSAGES: {
         // Same back btn logic 
-
         displayConvo = recentMessagesScreen(sp,ts.touched());
         if (ts.touched() && msgBackBtnPressed(sp)) { // Can reuse this function bc same hitbox although created inside of recentMessagesScreen
         currentState = UI_MENU;   

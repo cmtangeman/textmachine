@@ -2,9 +2,11 @@
 #include "buttons.h"
 #include "types.h"
 #include <Adafruit_ILI9341.h>
+#include <XPT2046_Touchscreen.h>
 
 
 extern Adafruit_ILI9341 tft;
+extern XPT2046_Touchscreen ts;
 
 // ---------- Layout for ROTATION = 1 (landscape 320x240) ----------
 static const int HEADER_H = 70; // Where the text is going to print
@@ -109,6 +111,7 @@ static void drawKeyboard() {
   // IMPORTANT: only do this if your whole app is using rotation 1.
   // If your touch mapping was calibrated for a different rotation, clicks will be wrong.
   tft.setRotation(1);
+  ts.setRotation(1);
 
   tft.fillScreen(ILI9341_BLACK);
   tft.setTextColor(ILI9341_WHITE);
@@ -192,7 +195,14 @@ bool keyboardTick(const ScreenPoint& sp, bool touched) {
     Serial.println("KEY: <BACK>");
     return false;
   }*/ 
-
+    
+ 
+    Serial.print(", x = ");
+    Serial.print(sp.x);
+    Serial.print(", y = ");
+    Serial.print(sp.y);
+    delay(30);
+    Serial.println();
   // Check each key and check if inputted was one of the clicked keys
   for (int i = 0; i < 41; i++) {
     if (!kbKeys[i].isClicked(sp)) continue; // EX : key 3 is clicked so we continue
@@ -212,6 +222,7 @@ bool keyboardTick(const ScreenPoint& sp, bool touched) {
     if (i == 30) { Serial.println(typed); return true; }
 
 }
+  return false; // nothing was clicked. 
 }
 
 const char* keyboardGetText(void) {
