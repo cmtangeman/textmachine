@@ -3,7 +3,7 @@
 
 struct ScreenPoint;
 
-bool keyboardTick(const ScreenPoint& sp, bool touched);
+bool keyboardTick(const ScreenPoint& sp, bool justTouched);
 const char* keyboardGetText(void);
 void keyboardReset(void);
 void keyboardClearText(void);

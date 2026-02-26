@@ -265,26 +265,35 @@ void loop() {
   }   
 
 
-
+    bool touched = false;
     ScreenPoint sp;
     ScreenPoint spLandscape;
+
 
     // Touch Logic / UI FSM\
     // read touch gate click checks.. 
   if (ts.touched()) {
-    TS_Point p = ts.getPoint();
-    sp = getScreenCoords(p.x, p.y);
-    spLandscape = getScreenCoordsLandscape(p.x, p.y);
-
+    delay(5); // wait for internals to settle down before measuring 
+    if (ts.touched()) { // Now measure -> Prevent 0,0 garbage
+        TS_Point p = ts.getPoint();
+        // if (p.x > 0 && p.y > 0) {
+            touched = true;
+            sp = getScreenCoords(p.x, p.y);
+            spLandscape = getScreenCoordsLandscape(p.x, p.y);
+        // }
+    }
   }
+    // Single centralized debounce that is passed into different display / touch frameworks 
+  static bool wasTouched = false;
+  bool justPressed = false;
+  if (touched && !wasTouched) justPressed = true;
+  wasTouched = touched;
 
     /*Serial.println(sp.x);
     Serial.println(sp.y); Debug coordinates, right now touch is ok. */
 
     // FSM
     switch(currentState){
-
-
 
     case UI_MENU: {
 
@@ -298,9 +307,10 @@ void loop() {
       if (ts.touched() && compBtn.isClicked(sp)) {
         ts.setRotation(1); // landscape mode
         currentState = UI_COMPOSE;
-        while (ts.touched()) delay(10); // Wait for the transition between screens
+        //while (ts.touched()) 
+        delay(10); // Wait for the transition between screens
         keyboardReset(); // reset
-        keyboardTick(spLandscape, ts.touched());
+        keyboardTick(spLandscape, justPressed);
         return;
       }
       if (ts.touched() && refreshBtn.isClicked(sp)) {

@@ -186,9 +186,9 @@ bool keyboardBackPressed(const ScreenPoint& sp) {
 
 // Call this every loop when keyboard active.
 // Returns true if "SEND" pressed.
-bool keyboardTick(const ScreenPoint& sp, bool touched) {
+bool keyboardTick(const ScreenPoint& sp, bool justTouched) {
   if (!kbDrawn) drawKeyboard();
-  if (!kbTapEdge(touched)) return false;
+  if (!justTouched) return false;
 
   // Back button click -- handled in UI state instead)
   /*if (keyboardBackPressed(sp)) {
