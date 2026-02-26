@@ -27,9 +27,10 @@ static const int MAX_TEXT = 160;
 static Button kbKeys[41];
 
 static Button kbBackBtn;
-static Button toButton;
-static Button msgButton;
+static Button toBtn;
+static Button msgBtn;
 static Button switchkeyboardButton;
+
 
 
 static bool kbDrawn = false;
@@ -54,6 +55,7 @@ static bool kbTapEdge(bool touched) {
 static void drawTypedLine() {
   // Clear typed line area ONLY (don’t wipe the header)
   // Typed line sits at y=44..68
+  // Init a button of these dimensions 
   tft.fillRect(76, 0, tft.width() - 56, 34, ILI9341_WHITE);
   tft.fillRect(0, 44, tft.width(), 34, ILI9341_BLUE); // Active bar
   tft.setCursor(0, 46);
@@ -101,8 +103,12 @@ static void backspaceChar() {
 void keyboardClearText(void) {
   typedLen = 0;
   typed[0] = '\0';
-  msgOrNumber = true;
+  msgOrNumber = true; // ->  Initially what changed the state. Think we might still be able to use this with button logic. 
+  drawTypedLine();
+  
 }
+
+
 
 
 
@@ -117,15 +123,18 @@ static void drawKeyboard() {
   tft.setTextColor(ILI9341_WHITE);
   tft.setTextSize(2);
 
-  // Bac,
+  // Back
   kbBackBtn.initButton(6, 6, 36, 36, "<");
+  msgBtn.initButton(0, 44, tft.width(), 34, ""); // msg button 
+  toBtn.initButton(76, 0, tft.width() - 56, 34, ""); // Number Btn, default as BLUE.
 
 
-  tft.setCursor(6, 46);
+  tft.setCursor(46, 6);
   tft.print("To:");
   // typed line prints after "To:"
   typedLen = 0;
   typed[0] = '\0';
+
   if (msgOrNumber) drawTypedLine();
   else             drawTypedLineNum();
 
@@ -183,6 +192,13 @@ static void drawKeyboard() {
 bool keyboardBackPressed(const ScreenPoint& sp) {
   return kbBackBtn.isClicked(sp);
 }
+bool msgBtnPressed(const ScreenPoint& sp) {
+  return msgBtn.isClicked(sp);
+}
+
+bool toBtnPressed(const ScreenPoint& sp) {
+  return toBtn.isClicked(sp);
+}
 
 // Call this every loop when keyboard active.
 // Returns true if "SEND" pressed.
@@ -191,6 +207,7 @@ bool keyboardTick(const ScreenPoint& sp, bool justTouched) {
   if (!justTouched) return false;
 
   // Back button click -- handled in UI state instead)
+  // Were going to handle the msgButton click in the UI state as well . 
   /*if (keyboardBackPressed(sp)) {
     Serial.println("KEY: <BACK>");
     return false;
@@ -219,7 +236,11 @@ bool keyboardTick(const ScreenPoint& sp, bool justTouched) {
 
     if (i == 28) { appendChar(' '); return false; }
     if (i == 29) { backspaceChar(); return false; }
-    if (i == 30) { Serial.println(typed); return true; }
+    if (i == 30) { 
+      if(msgOrNumber){
+      Serial.println(typed); return true;  // Send it. 
+      }
+      }
 
 }
   return false; // nothing was clicked. 
@@ -233,5 +254,5 @@ void keyboardReset(void) {
   kbDrawn = false;
   typedLen = 0;
   typed[0] = '\0';
-  msgOrNumber = false;
+  msgOrNumber = false; // -
 }

@@ -36,6 +36,8 @@ float xCalC = 249.84f, yCalC = 333.47f; // intercept
 float xCalM_landscape = -0.089715f, yCalM_landscape = -0.065381f; // slope
 float xCalC_landscape =356.25f, yCalC_landscape = 246.22; // intercept 
 bool menuDrawn = false;
+
+
 bool numberAquired = false;
 
 int displayConvo = 0;
@@ -366,14 +368,14 @@ void loop() {
 
 
       case UI_COMPOSE:     {
-
+        /*
         if(!numberAquired){
         if (keyboardBackPressed(spLandscape)) {
         currentState = UI_MENU;   //  go back to menu
         menuDrawn = false;        // force redraw
         return;
         } 
-       if (keyboardTick(spLandscape, ts.touched())){
+       if (keyboardTick(spLandscape, justPressed)){
        const char* kb = keyboardGetText();
        strncpy(recipientNumber, kb, MAX_PHONE_LEN - 1);
        recipientNumber[MAX_PHONE_LEN - 1] = '\0';
@@ -387,7 +389,7 @@ void loop() {
         menuDrawn = false;        // force redraw
         return;
         } 
-        if (keyboardTick(spLandscape, ts.touched())){
+        if (keyboardTick(spLandscape, justPressed)){
         const char* kb2 = keyboardGetText();
         strncpy(msgBody, kb2, MAX_BODY_LEN - 1);
         msgBody[MAX_BODY_LEN - 1] = '\0';
@@ -400,19 +402,64 @@ void loop() {
         numberAquired = false;
         return;
         }
+        */ 
+
+        // Setting recipient number state 
+        if (!numberAquired) {
+        if (justPressed && keyboardBackPressed(spLandscape)) {
+        currentState = UI_MENU;
+        menuDrawn = false;
+        return;
+        } 
+
+    if (justPressed && msgBtnPressed(spLandscape)) { 
+        const char* kb = keyboardGetText();
+        strncpy(recipientNumber, kb, MAX_PHONE_LEN - 1);
+        recipientNumber[MAX_PHONE_LEN - 1] = '\0';
+        numberAquired = true;
+        keyboardClearText();
+        
+        Serial.println("Phone # acquired");
+    } else if (keyboardTick(spLandscape, justPressed)) {
+        Serial.println("Error: Send sent with no number");
+    }
+} else { // -> Msg state
+    if (justPressed && keyboardBackPressed(spLandscape)) {
+        currentState = UI_MENU;
+        menuDrawn = false;
+        return;
+    } else if (justPressed && toBtnPressed(spLandscape)) {
+        numberAquired = false;
+        keyboardReset();
+    } else if (keyboardTick(spLandscape, justPressed)) {
+        const char* kb2 = keyboardGetText();
+        strncpy(msgBody, kb2, MAX_BODY_LEN - 1);
+        msgBody[MAX_BODY_LEN - 1] = '\0';
+        text(recipientNumber, msgBody);
+        Serial.println("TextSent");
+        numberAquired = false;
+        keyboardReset();
+        currentState = UI_MENU;
+        menuDrawn = false;
+        
+        return;
+    }
+}
+            
 
         
-
-        // 
+      // Change the color, and register the phone number
         
         break;
+      }
+
+    
 
 
     }
-    }
 
 }
-}
+
 
 
 /*
