@@ -106,7 +106,7 @@ ScreenPoint getScreenCoordsLandscape(int16_t rawX, int16_t rawY) {
 
 void setup() {
   Serial.begin(9600);
-  while(!Serial); // Wait for serial port to connect
+  // while(!Serial); // Wait for serial port to connect
 
   pinMode(TFT_CS, OUTPUT);
   pinMode(TS_CS, OUTPUT);
@@ -159,8 +159,8 @@ void setup() {
 
 void receive() {
   int c;
-  char senderNumber[20];
-  char senderBody[300];
+  char senderNumber[30];
+  char senderBody[500];
   int i = 0;
 
   // If there are any SMSs available()
@@ -175,7 +175,7 @@ void receive() {
     tft.println(senderNumber);
 
     // Read message bytes and print them
-    while ((c = sms.read()) != -1 && i < 299) {
+    while ((c = sms.read()) != -1 && i < 499) {
       senderBody[i++] = (char)c;
       Serial.print((char)c);
       tft.print((char)c);
@@ -285,10 +285,10 @@ void loop() {
         // }
     }
   }
-    // Single centralized debounce that is passed into different display / touch frameworks 
+  
   static bool wasTouched = false;
   bool justPressed = false;
-  if (touched && !wasTouched) justPressed = true;
+  if (touched && !wasTouched) justPressed = true; // Single centralized debounce that is passed into different display / touch frameworks 
   wasTouched = touched;
 
     /*Serial.println(sp.x);
@@ -298,15 +298,15 @@ void loop() {
     switch(currentState){
 
     case UI_MENU: {
-
-        if (ts.touched() && msgBtn.isClicked(sp)) {
+      
+        if (justPressed && msgBtn.isClicked(sp)) {
         // Display recents chronologically and 
-        while (ts.touched()) delay(10); // Wait for the transition between screens
+        // Wait for the transition between screens
         currentState = UI_MESSAGES;
         return; // Dont bother checking other conditions
       }
 
-      if (ts.touched() && compBtn.isClicked(sp)) {
+      if (justPressed && compBtn.isClicked(sp)) {
         ts.setRotation(1); // landscape mode
         currentState = UI_COMPOSE;
         //while (ts.touched()) 
@@ -337,27 +337,29 @@ void loop() {
       break;
      }
 
-      case UI_MESSAGES: {
-        // Same back btn logic 
-        displayConvo = recentMessagesScreen(sp,ts.touched());
-        if (ts.touched() && msgBackBtnPressed(sp)) { // Can reuse this function bc same hitbox although created inside of recentMessagesScreen
-        currentState = UI_MENU;   
-        menuDrawn = false;     
-        return;   
+    case UI_MESSAGES: {
+        if (justPressed && msgBackBtnPressed(sp)) {
+            currentState = UI_MENU;   
+            menuDrawn = false;  
+            wasTouched = true;   
+            return;   
+        } else {
+            displayConvo = recentMessagesScreen(sp, justPressed);
+            if (displayConvo != -1) {
+                currentState = UI_CONVO;
+                isDrawnConvo = false;
+                wasTouched = true;
+                return;
+            }
         }
-        if(displayConvo != -1){
-        while (ts.touched()) delay(10); // Wait for the transition between screens
-        currentState = UI_CONVO;
-        return;
-        }
-
         break;
-      }
+    }
 
   case UI_CONVO: {
-      if (drawConversationToTFT(sp, ts.touched(), displayConvo, isDrawnConvo)){
+      if (drawConversationToTFT(sp, justPressed, displayConvo, isDrawnConvo)){
         currentState = UI_MESSAGES;
         isDrawnConvo = false;  // Reset for next time
+        wasTouched = true;
         return;
       }
       isDrawnConvo = true;  // Mark as drawn after first call
@@ -368,42 +370,7 @@ void loop() {
 
 
       case UI_COMPOSE:     {
-        /*
-        if(!numberAquired){
-        if (keyboardBackPressed(spLandscape)) {
-        currentState = UI_MENU;   //  go back to menu
-        menuDrawn = false;        // force redraw
-        return;
-        } 
-       if (keyboardTick(spLandscape, justPressed)){
-       const char* kb = keyboardGetText();
-       strncpy(recipientNumber, kb, MAX_PHONE_LEN - 1);
-       recipientNumber[MAX_PHONE_LEN - 1] = '\0';
-       numberAquired = true;
-       keyboardClearText();
-       Serial.print("Phone # aquired");
-        }
-        }else if(numberAquired){
-        if (keyboardBackPressed(spLandscape)) {
-        currentState = UI_MENU;   //  go back to menu
-        menuDrawn = false;        // force redraw
-        return;
-        } 
-        if (keyboardTick(spLandscape, justPressed)){
-        const char* kb2 = keyboardGetText();
-        strncpy(msgBody, kb2, MAX_BODY_LEN - 1);
-        msgBody[MAX_BODY_LEN - 1] = '\0';
-
-        // Once keyboard interface has done its job we send it over to the text function
-        text(recipientNumber, msgBody);
-        Serial.println("TextSent");
-        numberAquired = false;
-        keyboardReset();
-        numberAquired = false;
-        return;
-        }
-        */ 
-
+       
         // Setting recipient number state 
         if (!numberAquired) {
         if (justPressed && keyboardBackPressed(spLandscape)) {
@@ -445,21 +412,51 @@ void loop() {
         return;
     }
 }
-            
-
         
       // Change the color, and register the phone number
         
         break;
       }
 
-    
-
-
     }
 
 }
 
+ /*
+        if(!numberAquired){
+        if (keyboardBackPressed(spLandscape)) {
+        currentState = UI_MENU;   //  go back to menu
+        menuDrawn = false;        // force redraw
+        return;
+        } 
+       if (keyboardTick(spLandscape, justPressed)){
+       const char* kb = keyboardGetText();
+       strncpy(recipientNumber, kb, MAX_PHONE_LEN - 1);
+       recipientNumber[MAX_PHONE_LEN - 1] = '\0';
+       numberAquired = true;
+       keyboardClearText();
+       Serial.print("Phone # aquired");
+        }
+        }else if(numberAquired){
+        if (keyboardBackPressed(spLandscape)) {
+        currentState = UI_MENU;   //  go back to menu
+        menuDrawn = false;        // force redraw
+        return;
+        } 
+        if (keyboardTick(spLandscape, justPressed)){
+        const char* kb2 = keyboardGetText();
+        strncpy(msgBody, kb2, MAX_BODY_LEN - 1);
+        msgBody[MAX_BODY_LEN - 1] = '\0';
+
+        // Once keyboard interface has done its job we send it over to the text function
+        text(recipientNumber, msgBody);
+        Serial.println("TextSent");
+        numberAquired = false;
+        keyboardReset();
+        numberAquired = false;
+        return;
+        }
+        */ 
 
 
 /*

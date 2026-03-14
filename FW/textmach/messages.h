@@ -39,6 +39,7 @@ bool msgBackBtnPressed(const ScreenPoint& sp);
 bool drawConversationToTFT(const ScreenPoint& sp,bool touched, int selection, bool drawn); // open convo
 void uiTick(const ScreenPoint& sp, bool touched);
 
+void recentMessagesReset(void);
 
 
 #endif

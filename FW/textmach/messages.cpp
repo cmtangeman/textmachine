@@ -26,6 +26,8 @@ extern Contact contactList[MAX_CONTACTS];
 extern Adafruit_ILI9341 tft;
 static Button msgBackBtn;
 
+static bool drawn = false;
+
 // ----- Forward declarations (so recentMessagesScreen can call these) -----
 void drawConversationToTFT(int selection);
 static int  findThreadByPhone(const char* phone);
@@ -38,7 +40,7 @@ bool msgBackBtnPressed(const ScreenPoint& sp) {
 
 
 int recentMessagesScreen(const ScreenPoint& sp, bool touched) {
-  static bool drawn = false;
+  
   static Button threadBtns[MAX_CONVERSATIONS];
   const int listStartY = 50;
   const int rowH = 34;
@@ -95,6 +97,9 @@ int recentMessagesScreen(const ScreenPoint& sp, bool touched) {
   
 }
 
+void recentMessagesReset() {
+    static bool drawn = false; // can't access static from outside
+}
 
 // Once the selection is true, print out the conversation. 
 // TODO: Add a button to text and pass the phone number to the text program so all

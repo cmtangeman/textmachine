@@ -8,6 +8,7 @@ const char* keyboardGetText(void);
 void keyboardReset(void);
 void keyboardClearText(void);
 static void drawKeyboard(void);
+static void drawNumberpad(void);
 
 // NEW: lets your UI state handle back without changing keyboardTick() return type
 bool keyboardBackPressed(const ScreenPoint& sp);

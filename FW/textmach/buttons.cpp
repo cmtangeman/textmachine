@@ -2,6 +2,10 @@
 
 #include <math.h>
 #include <Adafruit_ILI9341.h>
+#include <Adafruit_GFX.h>
+#include <Fonts/FreeSans9pt7b.h>
+#include <Fonts/FreeSansBold9pt7b.h>
+
 
 extern Adafruit_ILI9341 tft;
 
@@ -24,11 +28,20 @@ static Button backBtn;
   }
 
 void Button::render() {
-  tft.fillRect(x, y, width, height, ILI9341_BLUE);
-  tft.setCursor(x + 5, y + 5);
-  tft.setTextSize(2);
+  tft.fillRect(x, y, width, height, ILI9341_BLACK);
+
+  tft.setFont(&FreeSansBold9pt7b);   // use GFX font
+  tft.setTextSize(1);            // must stay 1 for GFX fonts
   tft.setTextColor(ILI9341_WHITE);
+
+  // center text better
+  int cursorX = x + 6;
+  int cursorY = y + height/2 + 4;
+
+  tft.setCursor(cursorX, cursorY);
   tft.print(text);
+
+  tft.setFont(NULL);   // restore default for rest of UI
 }
 
 bool Button::isClicked(const ScreenPoint& sp) {
