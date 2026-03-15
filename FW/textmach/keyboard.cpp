@@ -90,7 +90,7 @@ static void drawTypedLine() {
 
   
   tft.setCursor(4, 46);
-  uiUseButtonFont();
+  uiUseDefaultFont();
   tft.setTextColor(ILI9341_BLACK);
   tft.setTextColor(ILI9341_BLACK);
   tft.print(typed);
@@ -107,7 +107,7 @@ static void drawTypedLineNum() {
 
   
   tft.setCursor(80, 8);
-  uiUseButtonFont();
+  uiUseDefaultFont();
   tft.setTextColor(ILI9341_BLACK);
   tft.print(typed);
 

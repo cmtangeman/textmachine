@@ -2,162 +2,170 @@
 #include "types.h"
 #include "buttons.h"
 #include "contacts.h"
+
 #include <string.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ILI9341.h>
 
+// -------------------------------------------------------------------------------------------------
+// External dependencies
+// -------------------------------------------------------------------------------------------------
+
 extern Adafruit_ILI9341 tft;
-static MessageThread threads[MAX_CONVERSATIONS];
-static int threadTop = -1;   // Index of MOST RECENT thread (top of recents list). -1 means none.
-static int convoSelection = 0;
-
-
-// ---------------- STORAGE ----------------
-// Uses the sizes from Messages.h (MAX_CONVERSATIONS, etc.)
-
-
-// From main sketch (defined in your .ino)
-// extern int readSerial(char result[]);
-// extern void text(char *remoteNum);
-// extern void receive(void);
-// Contacts list (defined elsewhere)
 extern Contact contactList[MAX_CONTACTS];
 
-extern Adafruit_ILI9341 tft;
+// -------------------------------------------------------------------------------------------------
+// Module state
+// -------------------------------------------------------------------------------------------------
+
+static MessageThread threads[MAX_CONVERSATIONS];
+static int threadTop = -1;          // Most recent thread index. -1 means no threads.
+static int convoSelection = 0;
+
 static Button msgBackBtn;
+static Button convoBackBtn;
+static Button threadBtns[MAX_CONVERSATIONS];
 
-static bool drawn = false;
+static bool recentMessagesDrawn = false;
+static bool conversationDrawn   = false;
 
-// ----- Forward declarations (so recentMessagesScreen can call these) -----
-void drawConversationToTFT(int selection);
+// -------------------------------------------------------------------------------------------------
+// Private helpers
+// -------------------------------------------------------------------------------------------------
+
 static int  findThreadByPhone(const char* phone);
 static void moveThreadToTop(int idx);
 static void copyBounded(char* dst, const char* src, size_t dstSize);
+
+// -------------------------------------------------------------------------------------------------
+// UI helpers
+// -------------------------------------------------------------------------------------------------
 
 bool msgBackBtnPressed(const ScreenPoint& sp) {
   return msgBackBtn.isClicked(sp);
 }
 
+bool convoBackBtnPressed(const ScreenPoint& sp) {
+  return convoBackBtn.isClicked(sp);
+}
 
-int recentMessagesScreen(const ScreenPoint& sp, bool touched) {
-  
-  static Button threadBtns[MAX_CONVERSATIONS];
+void recentMessagesReset() {
+  recentMessagesDrawn = false;
+}
+
+void conversationReset() {
+  conversationDrawn = false;
+}
+
+// -------------------------------------------------------------------------------------------------
+// Recent messages screen
+// -------------------------------------------------------------------------------------------------
+
+int recentMessagesScreen(const ScreenPoint& sp, bool justPressed) {
   const int listStartY = 50;
   const int rowH = 34;
   const int x = 10;
   const int w = 220;
 
-  if (!drawn) {
+  if (!recentMessagesDrawn) {
     tft.fillScreen(ILI9341_BLACK);
     tft.setTextColor(ILI9341_WHITE);
     tft.setTextSize(2);
-  
-    msgBackBtn.initButton(6, 6, 36, 36, "<");
+
+    msgBackBtn.initButton(0, 0, 30, 30, "<");
 
     tft.setCursor(50, 10);
-    
     tft.print("Recents");
 
-    // Build/draw buttons for each thread
     for (int i = threadTop; i >= 0; i--) {
-      int selection = threadTop - i + 1;  // 1..N
-      int rowIndex = selection - 1;
-      int y = listStartY + rowIndex * rowH;
+      int selection = threadTop - i;   // 0..N-1
+      int y = listStartY + selection * rowH;
 
       char label[24];
       int cidx = findContactName(threads[i].phoneNumber);
+
       if (cidx != -1) {
-        strncpy(label, contactList[cidx].name, sizeof(label) - 1);
+        copyBounded(label, contactList[cidx].name, sizeof(label));
       } else {
-        strncpy(label, threads[i].phoneNumber, sizeof(label) - 1);
+        copyBounded(label, threads[i].phoneNumber, sizeof(label));
       }
-      label[sizeof(label) - 1] = '\0';
 
-      threadBtns[rowIndex].initButton(x, y, w, rowH, label);
+      threadBtns[selection].initButton(x, y, w, rowH, label);
 
-      // optional numbering
       tft.setCursor(0, y + 8);
-      tft.print(selection);
+      tft.print(selection + 1);
       tft.print(" ");
     }
 
-    drawn = true;
+    recentMessagesDrawn = true;
   }
 
-  // Check if button is clicked : 
+  if (!justPressed) return -1;
+
   for (int rowIndex = 0; rowIndex <= threadTop; rowIndex++) {
     if (threadBtns[rowIndex].isClicked(sp)) {
-      convoSelection = rowIndex + 1; // 1..N
-      drawn = false;
+      convoSelection = rowIndex;
       return convoSelection;
     }
   }
+
   return -1;
-
-  
 }
 
-void recentMessagesReset() {
-    static bool drawn = false; // can't access static from outside
+// -------------------------------------------------------------------------------------------------
+// Conversation screen
+// -------------------------------------------------------------------------------------------------
+
+bool drawConversationToTFT(int selection) {
+  if (!conversationDrawn) {
+    int idx = threadTop - selection;
+    if (idx < 0 || idx > threadTop) return false;
+
+    MessageThread& t = threads[idx];
+
+    tft.fillScreen(ILI9341_BLACK);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.setTextSize(2);
+
+    convoBackBtn.initButton(0, 0, 30, 30, "<");
+
+    tft.setCursor(0, 50);
+
+    int cidx = findContactName(t.phoneNumber);
+    if (cidx != -1) {
+      tft.println(contactList[cidx].name);
+    } else {
+      tft.println(t.phoneNumber);
+    }
+
+    tft.println("----------------");
+
+    const int maxShow = 6;
+    int shown = 0;
+
+    for (int i = t.lastMessageIndex; i >= 0 && shown < maxShow; i--, shown++) {
+      tft.print(t.messages[i].dir == IN ? "< " : "> ");
+      tft.println(t.messages[i].body);
+    }
+
+    conversationDrawn = true;
+  }
+
+  return true;
 }
 
-// Once the selection is true, print out the conversation. 
-// TODO: Add a button to text and pass the phone number to the text program so all
-// that's left is to add the message
+// -------------------------------------------------------------------------------------------------
+// Storage helpers
+// -------------------------------------------------------------------------------------------------
 
-bool drawConversationToTFT(const ScreenPoint& sp, bool touched, int selection, bool drawn) {
-  bool isDrawn = drawn;
-  if (!isDrawn){
-  int idx = threadTop - (selection - 1);
-  if (idx < 0 || idx > threadTop) return true; // TODO: Error case / scroll wheel eventually
-
-  MessageThread &t = threads[idx];
-  // Display 
-  tft.fillScreen(ILI9341_BLACK);
-  msgBackBtn.initButton(0, 0, 36, 36, "<");
-  tft.setCursor(0, 50);
-  tft.setTextSize(2);
-  tft.setTextColor(ILI9341_WHITE);
-  
-  // Header: name/number
-  int cidx = findContactName(t.phoneNumber);
-  if (cidx != -1) tft.println(contactList[cidx].name);
-  else            tft.println(t.phoneNumber);
-
-  tft.println("----------------");
-
-  // Show last few messages (fit screen)
-  int maxShow = 6;
-  int shown = 0;
-  for (int i = t.lastMessageIndex; i >= 0 && shown < maxShow; i--, shown++) {
-    tft.print(t.messages[i].dir == IN ? "< " : "> ");
-    tft.println(t.messages[i].body);
-  }
-  isDrawn = true;
-  }
-
-  if(msgBackBtn.isClicked(sp) && touched){
-    return true; 
-  }
-
-  return false;
-}
-
-
-
-// Non display message storage logic 
-//--------------------------------------------------------------------------------------------------------------------------------------------
-
-// Safe bounded copy that GUARANTEES null-termination.
-static void copyBounded(char *dst, const char *src, size_t dstSize) {
+static void copyBounded(char* dst, const char* src, size_t dstSize) {
   if (dstSize == 0) return;
+
   strncpy(dst, src, dstSize - 1);
   dst[dstSize - 1] = '\0';
 }
 
-// Find an existing thread by phone number.
-// Returns index [0..threadTop], or -1 if not found.
-static int findThreadByPhone(const char *phone) {
+static int findThreadByPhone(const char* phone) {
   for (int i = 0; i <= threadTop; i++) {
     if (strcmp(threads[i].phoneNumber, phone) == 0) {
       return i;
@@ -165,26 +173,27 @@ static int findThreadByPhone(const char *phone) {
   }
   return -1;
 }
-// Moves the selected thread to the top of the recents list (index = threadTop).
-// This is the iMessage behavior: ONLY call this after send/receive (new activity).
+
 static void moveThreadToTop(int idx) {
-  if (idx == threadTop) return;   // already most recent
+  if (idx == threadTop) return;  // already most recent
 
   MessageThread temp = threads[idx];
 
-  // Shift everything between idx..threadTop-1 down by one slot
   for (int i = idx; i < threadTop; i++) {
     threads[i] = threads[i + 1];
   }
 
-  // Put the selected thread at the top (most recent)
   threads[threadTop] = temp;
 }
 
-void pushMessage(const char *phone, const char *text, MsgDir dir) {
+// -------------------------------------------------------------------------------------------------
+// Public storage API
+// -------------------------------------------------------------------------------------------------
+
+void pushMessage(const char* phone, const char* text, MsgDir dir) {
   int idx = findThreadByPhone(phone);
 
-  // If there is no existing thread with this phone number, create a new one.
+  // Create new thread if needed
   if (idx == -1) {
     if (threadTop + 1 >= MAX_CONVERSATIONS) {
       Serial.println("Conversations full, message not saved!");
@@ -192,27 +201,25 @@ void pushMessage(const char *phone, const char *text, MsgDir dir) {
     }
 
     threadTop++;
-    idx = threadTop;  // New thread lives at the top by default
+    idx = threadTop;
 
     copyBounded(threads[idx].phoneNumber, phone, MAX_PHONE_LEN);
-    threads[idx].lastMessageIndex = -1; // Empty thread
+    threads[idx].lastMessageIndex = -1;
   }
 
-  MessageThread &t = threads[idx];  // Reference to the thread in storage (no copying)
+  MessageThread& t = threads[idx];
 
-  // Add message if there's room
+  // Append message if space remains
   if (t.lastMessageIndex + 1 < MAX_MESSAGES_PER_CONVO) {
     t.lastMessageIndex++;
 
     copyBounded(t.messages[t.lastMessageIndex].body, text, MAX_BODY_LEN);
     t.messages[t.lastMessageIndex].dir = dir;
   } else {
-    // If you want iMessage-like behavior, you probably want to drop OLDEST and keep newest,
-    // but for now we just silently stop adding once full.
-    // Serial.println("Thread message buffer full!");
+    // Optional future improvement:
+    // drop oldest message and keep newest instead of doing nothing
   }
 
-  // iMessage behavior: thread becomes most recent AFTER send/receive.
+  // Most recently active thread moves to top
   moveThreadToTop(idx);
 }
-

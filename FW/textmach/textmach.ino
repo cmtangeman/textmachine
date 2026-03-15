@@ -301,7 +301,6 @@ void loop() {
       
         if (justPressed && msgBtn.isClicked(sp)) {
         // Display recents chronologically and 
-        // Wait for the transition between screens
         currentState = UI_MESSAGES;
         return; // Dont bother checking other conditions
       }
@@ -310,9 +309,7 @@ void loop() {
         ts.setRotation(1); // landscape mode
         currentState = UI_COMPOSE;
         //while (ts.touched()) 
-        delay(10); // Wait for the transition between screens
         keyboardReset(); // reset
-        keyboardTick(spLandscape, justPressed);
         return;
       }
       if (ts.touched() && refreshBtn.isClicked(sp)) {
@@ -337,34 +334,42 @@ void loop() {
       break;
      }
 
-    case UI_MESSAGES: {
-        if (justPressed && msgBackBtnPressed(sp)) {
-            currentState = UI_MENU;   
-            menuDrawn = false;  
-            wasTouched = true;   
-            return;   
-        } else {
-            displayConvo = recentMessagesScreen(sp, justPressed);
-            if (displayConvo != -1) {
-                currentState = UI_CONVO;
-                isDrawnConvo = false;
-                wasTouched = true;
-                return;
-            }
-        }
-        break;
-    }
+case UI_MESSAGES: {
+    recentMessagesScreen(sp, false);  // ensure screen gets drawn even with no press
 
-  case UI_CONVO: {
-      if (drawConversationToTFT(sp, justPressed, displayConvo, isDrawnConvo)){
-        currentState = UI_MESSAGES;
-        isDrawnConvo = false;  // Reset for next time
+    if (justPressed && msgBackBtnPressed(sp)) {
+        recentMessagesReset();
+        currentState = UI_MENU;
+        menuDrawn = false;
         wasTouched = true;
         return;
-      }
-      isDrawnConvo = true;  // Mark as drawn after first call
-      break; 
-  }
+    }
+
+    int picked = recentMessagesScreen(sp, justPressed);
+    if (picked != -1) {
+        displayConvo = picked;
+        conversationReset();
+        currentState = UI_CONVO;
+        wasTouched = true;
+        return;
+    }
+
+    break;
+}
+
+case UI_CONVO: {
+    drawConversationToTFT(displayConvo);
+
+    if (justPressed && convoBackBtnPressed(sp)) {
+        conversationReset();
+        recentMessagesReset();   // force messages screen redraw
+        currentState = UI_MESSAGES;
+        wasTouched = true;
+        return;
+    }
+
+    break;
+}
         
       
 
@@ -398,7 +403,7 @@ void loop() {
     } else if (justPressed && toBtnPressed(spLandscape)) {
         numberAquired = false;
         keyboardReset();
-    } else if (keyboardTick(spLandscape, justPressed)) {
+    } else if (keyboardTick(spLandscape, justPressed)) { // add gate here so dont get character bleed through
         const char* kb2 = keyboardGetText();
         strncpy(msgBody, kb2, MAX_BODY_LEN - 1);
         msgBody[MAX_BODY_LEN - 1] = '\0';
