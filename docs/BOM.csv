@@ -1,0 +1,9 @@
+Item #,Component,Description,Manufacturer / Source,Quantity,Key Dimensions (L × W × H),Datasheet / Reference Link,Mechanical Notes for 3D Printing
+
+1,Display,"3.2"" TFT LCD + Touch (ILI9341 + FT6636U)","SparkFun / generic",1,"89.3 × 55.0 × ~5 mm (module); Active area: 64.8 × 48.6 mm","https://www.displayfuture.com/Display/datasheet/controller/ILI9341.pdf | https://protosupplies.com/product/tft-lcd-3-2-240x320-rgb-spi-display-with-touchscreen/","Header pins on one side (2.54 mm pitch). Allow ~1–2 mm clearance for touch overlay. Weight ~30–50 g. Check for bezel lip."
+
+2,Battery,"3.7V LiPo","LP503565 (or equivalent ~2000–3000 mAh); Generic LiPo supplier",1,"65 × 35 × 5.0 mm (±0.3–0.5 mm tolerance)","https://www.lithium-polymer-battery.net/wp-content/uploads/2023/03/LP103565-2900mAh-with-Molex-501330-0200-lithium-polymer-battery-datasheet.pdf","Soft pouch – add padding/strain relief. Space for PCM (~2–3 mm). Access for charge connector/wires. Weight ~40–60 g."
+
+3,Microcontroller,"Arduino MKR NB 1500","ABX00019; Arduino",1,"67.6 × 25.0 × ~5 mm","https://docs.arduino.cc/hardware/mkr-nb-1500 | https://media.digikey.com/pdf/Data%20Sheets/Arduino%20PDFs/ABX00019_Web.pdf","Mounting holes: 2 × M2 (58 mm spacing). USB/micro-USB port access. Antenna clearance. Pin headers 2.54 mm. Weight 32 g."
+
+4,LTE Module,"u-blox SARA LTE (integrated on MKR NB 1500)","SARA-R410M-02B or similar; u-blox",1,"26.0 × 16.0 × 2.5 mm","https://content.u-blox.com/sites/default/files/SARA-R4_ProductSummary_UBX-19049143.pdf | https://cdn.sparkfun.com/assets/3/4/4/5/c/SARA-R4_DataSheet.pdf","If separate: surface-mount LGA. If on board: use Arduino dimensions. Ensure RF antenna placement/clearance."
