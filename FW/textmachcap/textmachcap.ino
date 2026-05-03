@@ -5,11 +5,19 @@
   This is the only file that handles touch within this project.
 */
 
-#include "Adafruit_GFX.h"
-#include "Adafruit_ILI9341.h"
+// Arduino libraries 
+#include "Adafruit_GFX.h" // UI rendering and extra feautres
+#include "Adafruit_ILI9341.h" // Drives the rendered commands to the touch screen 
+#include <MKRNB.h>
+
+
+// Arduino core 
 #include "SPI.h"
 #include "Wire.h"
 #include "Math.h"
+
+// C std lib
+#include <stdio.h>
 
 // Local dependencies
 #include "types.h"
@@ -18,8 +26,8 @@
 #include "keyboard.h"
 
 // ── Pin definitions ───────────────────────────────────────────────
-#define TFT_DC   6
-#define TFT_CS   7
+#define TFT_DC   7
+#define TFT_CS   6
 #define TFT_RST -1
 
 #define CTP_RST  5
@@ -51,10 +59,10 @@ int  displayConvo  = 0;
 static char recipientNumber[MAX_PHONE_LEN];
 static char msgBody[MAX_BODY_LEN];
 
-#include <MKRNB.h>
-#include <stdio.h>
+
 NB     nbAccess;
 NB_SMS sms;
+//NBModem modem;
 
 // ── Touch ─────────────────────────────────────────────────────────
 // FT6336U outputs pixel coordinates directly — no calibration needed.
@@ -155,17 +163,42 @@ void setup() {
   tft.fillScreen(ILI9341_BLACK);
   tft.invertDisplay(true);
 
+
+
   bool connected = false;
-  while (!connected) {
+while (!connected) {
     if (nbAccess.begin("") == NB_READY) {
-      connected = true;
-      Serial.print(F("Circles (filled)         "));
-      Serial.println(testFilledCircles(10, ILI9341_BLUE));
-    } else {
-      tft.println("Not connected");
-      delay(1000);
+        connected = true;
+        
+        // PSM low power modem
+        // nbAcess begin also activates modem begin 
+        // CPSMS -> Power Saving Mode Settings: 
+        /*
+        The command controls whether the UE wants to apply PSM or not, as well as:
+        • the requested extended periodic RAU value in GERAN/UTRAN : 2g/3g legacy
+        • the requested GPRS READY timer value in GERAN/UTRAN : 2g/3g legacy
+        • the requested extended periodic TAU value in E-UTRAN : How long to sleep 
+        * (Tracking time update)
+          the requested Active Time value : How long to stay awak after activity 
+                  modem.send("AT+CPSMS=1,,,\"00000001\",\"00001010\"");
+//                           TAU=10min   Active=20sec
+        String response = modem.receive(1000);  // Waits a 1000 ms to receive a string from the modem
+        Serial.println(response);
+  */
+
+    SerialSARA.println("AT+CPSMS=1,,,\"00000001\",\"00001010\"");
+    delay(1000);
+    while (SerialSARA.available()) {
+        Serial.write(SerialSARA.read());
     }
-  }
+
+        Serial.print(F("Circles (filled)         "));
+        Serial.println(testFilledCircles(10, ILI9341_BLUE));
+    } else {
+        tft.println("Not connected");
+        delay(1000);
+    }
+}
 }
 
 // ── Loop ──────────────────────────────────────────────────────────
