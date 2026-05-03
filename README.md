@@ -1,6 +1,7 @@
 # TextMachine
 CrankPhone SW/FW/HW/Mech
 Notes on directory structure:
+
 FW/ArduinoILI9341MKNNB1500 :  All for resistive touch FW (old)
 capTouchTestingAndCal: testing calibration of capacitive touch
 receiveSMSwithDebug:  debug file that doesn't need touchscreen
