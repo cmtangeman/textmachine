@@ -13,6 +13,7 @@
 #define MAX_MESSAGES_PER_CONVO  20
 #define MAX_PHONE_LEN           20
 #define MAX_BODY_LEN            60
+#define MAX_TIMESTAMP_LEN 20
 
 // -------------------------------------------------------------------------------------------------
 // External display
@@ -31,12 +32,13 @@ enum MsgDir {
 
 struct Msg {
   char body[MAX_BODY_LEN];
+  char timestamp[MAX_TIMESTAMP_LEN];
   MsgDir dir;
 };
 
 struct MessageThread {
   char phoneNumber[MAX_PHONE_LEN];
-  Msg messages[MAX_MESSAGES_PER_CONVO];
+  Msg messages[MAX_MESSAGES_PER_CONVO]; // Instantiation of Msg/
   int lastMessageIndex;
 };
 
@@ -45,7 +47,7 @@ struct MessageThread {
 // -------------------------------------------------------------------------------------------------
 
 // Storage
-void pushMessage(const char* phone, const char* text, MsgDir dir);
+void pushMessage(const char* phone, const char* text, MsgDir dir, const char* time);
 
 // Recent messages UI
 int  recentMessagesScreen(const ScreenPoint& sp, bool justPressed);

@@ -312,4 +312,5 @@ void keyboardReset(void) {
   msgOrNumber = false;
   alphaMode   = false;
   capsLock    = false;
+  // TODO add horiziontal logic here 
 }

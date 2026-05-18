@@ -8,7 +8,7 @@
 // Arduino libraries 
 #include "Adafruit_GFX.h" // UI rendering and extra feautres
 #include "Adafruit_ILI9341.h" // Drives the rendered commands to the touch screen 
-#include <MKRNB.h>
+#include <MKRNB.h>  // Handles modem commands
 
 
 // Arduino core 
@@ -60,7 +60,7 @@ static char recipientNumber[MAX_PHONE_LEN];
 static char msgBody[MAX_BODY_LEN];
 
 
-NB     nbAccess;
+NB nbAccess;
 NB_SMS sms;
 //NBModem modem;
 
@@ -71,14 +71,14 @@ bool ctpRead(ScreenPoint& sp) {
   Wire.beginTransmission(FT6336U_ADDR);
   Wire.write(FT_REG_NUMTOUCHES);
   Wire.endTransmission(false);
-  Wire.requestFrom(FT6336U_ADDR, 5);
+  Wire.requestFrom(FT6336U_ADDR, 5);  // Request 5 bytes from 0x38 
 
-  if (Wire.available() < 5) return false;
+  if (Wire.available() < 5) return false; // Malfunction
 
-  uint8_t touches = Wire.read();
+  uint8_t touches = Wire.read();  // 
   if (touches == 0 || touches > 2) return false;
-
-  uint16_t x = ((Wire.read() & 0x0F) << 8) | Wire.read();
+  // & -> bitwise AND 0's out the top nibble and keeps all 1's from bottom niblle ( onlu the bottom nibble contains screen position, top is flags etc.)
+  uint16_t x = ((Wire.read() & 0x0F) << 8) | Wire.read(); // Masks upper nibble of byte and then uses bitwise OR to combine
   uint16_t y = ((Wire.read() & 0x0F) << 8) | Wire.read();
 
   sp = ScreenPoint((int16_t)x, (int16_t)y);
@@ -102,41 +102,72 @@ void receive() {
   int  c;
   char senderNumber[30];
   char senderBody[500];
+  char timestamp[25] = "unknown";  // default if parse fails
   int  i = 0;
 
   if (sms.available()) {
-    Serial.println("Message received from:");
-    tft.println("-----------------");
-    tft.println("Message received from:");
+
+    // ── Grab timestamp via AT+CMGR ────────────────────────────
+    SerialSARA.println("AT+CMGR=1");
+    delay(300);
+    String raw = "";
+    while (SerialSARA.available()) {
+      raw += (char)SerialSARA.read();
+    }
+    // +CMGR: "REC READ","+14155551234",,"26/05/07,10:30:00-28"
+    int tsStart = raw.lastIndexOf(",\"") + 2;
+    int tsEnd   = raw.indexOf("\"", tsStart);
+    if (tsStart > 1 && tsEnd > tsStart) {
+      raw.substring(tsStart, tsEnd).toCharArray(timestamp, 25);
+      Serial.println(timestamp);
+    }
+    // ─────────────────────────────────────────────────────────
 
     sms.remoteNumber(senderNumber, 20);
-    Serial.println(senderNumber);
-    tft.println(senderNumber);
 
     while ((c = sms.read()) != -1 && i < 499) {
       senderBody[i++] = (char)c;
-      Serial.print((char)c);
-      tft.print((char)c);
     }
     senderBody[i] = '\0';
 
-    pushMessage(senderNumber, senderBody, IN);
-    tft.println();
-    tft.println("-----------------");
+    pushMessage(senderNumber, senderBody, IN, timestamp);
     sms.flush();
-    Serial.println("MESSAGE DELETED FROM MODEM MEMORY SAVED IN FW/");
-  } else {
-    Serial.println("No new messages");
-    tft.println("No new messages");
   }
-  delay(500);
 }
 
 void text(const char* remoteNum, const char* message) {
-  sms.beginSMS(remoteNum);
-  sms.print(message);
-  sms.endSMS();
-  pushMessage(remoteNum, message, OUT);
+    tft.fillScreen(ILI9341_BLACK);
+    tft.setCursor(0, 0);
+
+    // Check signal first
+    SerialSARA.println("AT+CSQ");
+    delay(500);
+    String csq = "";
+    while (SerialSARA.available()) {
+        csq += (char)SerialSARA.read();
+    }
+
+    // CSQ of 99 means no signal
+    if (csq.indexOf("99,99") != -1 || csq.indexOf("+CSQ: 0") != -1) {
+        tft.println("No signal.");
+        tft.println("Message not sent.");
+        delay(1000);
+        return;  // bail out before endSMS
+    }
+
+    // Signal looks good, attempt send
+    tft.println("Sending...");
+    sms.beginSMS(remoteNum);
+    sms.print(message);
+    int result = sms.endSMS();
+
+    if (result == 1) {
+        pushMessage(remoteNum, message, OUT, "Unknown");
+        tft.println("Sent!");
+    } else {
+        tft.println("Failed.");
+    }
+    delay(1000);
 }
 
 // ── UI state machine ──────────────────────────────────────────────
@@ -185,8 +216,8 @@ while (!connected) {
         String response = modem.receive(1000);  // Waits a 1000 ms to receive a string from the modem
         Serial.println(response);
   */
-
-    SerialSARA.println("AT+CPSMS=1,,,\"00000001\",\"00001010\"");
+    SerialSARA.println("AT+CPSMS=0");
+    // SerialSARA.println("AT+CPSMS=1,,,\"00000001\",\"00001010\"");
     delay(1000);
     while (SerialSARA.available()) {
         Serial.write(SerialSARA.read());

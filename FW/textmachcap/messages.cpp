@@ -18,13 +18,13 @@ extern Contact contactList[MAX_CONTACTS];
 // Module state
 // -------------------------------------------------------------------------------------------------
 
-static MessageThread threads[MAX_CONVERSATIONS];
+static MessageThread threads[MAX_CONVERSATIONS];  // array of struct message thread which will contain each conversation
 static int threadTop = -1;          // Most recent thread index. -1 means no threads.
 static int convoSelection = 0;
 
 static Button msgBackBtn;
 static Button convoBackBtn;
-static Button threadBtns[MAX_CONVERSATIONS];
+static Button threadBtns[MAX_CONVERSATIONS];  // Initialize as much buttons as we might need 
 
 static bool recentMessagesDrawn = false;
 static bool conversationDrawn   = false;
@@ -78,23 +78,34 @@ int recentMessagesScreen(const ScreenPoint& sp, bool justPressed) {
     tft.print("Recents");
 
     for (int i = threadTop; i >= 0; i--) {
-      int selection = threadTop - i;   // 0..N-1
-      int y = listStartY + selection * rowH;
+      int msgOrder = threadTop - i;   // 0..N-1
+      int y = listStartY + msgOrder * rowH;
 
       char label[24];
       int cidx = findContactName(threads[i].phoneNumber);
 
+
+
       if (cidx != -1) {
-        copyBounded(label, contactList[cidx].name, sizeof(label));
+        copyBounded(label, contactList[cidx].name, sizeof(label));  // safely copy the phone number onto the label. 
       } else {
         copyBounded(label, threads[i].phoneNumber, sizeof(label));
       }
 
-      threadBtns[selection].initButton(x, y, w, rowH, label);
-
+      // Print out convo option i 
+      threadBtns[msgOrder].initButton(x, y, w, rowH, label);
       tft.setCursor(0, y + 8);
-      tft.print(selection + 1);
+      tft.print(msgOrder + 1);
       tft.print(" ");
+
+      // timestamp on the right side, smaller text
+      tft.setTextSize(1);
+      tft.setCursor(x + 130, y + 12);
+      if (threads[i].lastMessageIndex >= 0) {
+          tft.print(threads[i].messages[threads[i].lastMessageIndex].timestamp);
+      }
+      tft.setTextSize(2);  // restore
+
     }
 
     recentMessagesDrawn = true;
@@ -121,7 +132,7 @@ bool drawConversationToTFT(int selection) {
     int idx = threadTop - selection;
     if (idx < 0 || idx > threadTop) return false;
 
-    MessageThread& t = threads[idx];
+    MessageThread& t = threads[idx];  // MessageThread& , an adress?
 
     tft.fillScreen(ILI9341_BLACK);
     tft.setTextColor(ILI9341_WHITE);
@@ -171,30 +182,30 @@ static int findThreadByPhone(const char* phone) {
       return i;
     }
   }
-  return -1;
+  return -1; // No convo thread available, find a new one! 
 }
 
 static void moveThreadToTop(int idx) {
   if (idx == threadTop) return;  // already most recent
 
-  MessageThread temp = threads[idx];
+  MessageThread temp = threads[idx]; // temporarily sttore thread we want to push up
 
   for (int i = idx; i < threadTop; i++) {
-    threads[i] = threads[i + 1];
+    threads[i] = threads[i + 1];  // Push everything back
   }
 
-  threads[threadTop] = temp;
+  threads[threadTop] = temp;  // 
 }
 
 // -------------------------------------------------------------------------------------------------
 // Public storage API
 // -------------------------------------------------------------------------------------------------
 
-void pushMessage(const char* phone, const char* text, MsgDir dir) {
+void pushMessage(const char* phone, const char* text, MsgDir dir, const char* time) {
   int idx = findThreadByPhone(phone);
 
-  // Create new thread if needed
-  if (idx == -1) {
+  // If the conversation DNE: Create new thread:
+  if (idx == -1) {  
     if (threadTop + 1 >= MAX_CONVERSATIONS) {
       Serial.println("Conversations full, message not saved!");
       return;
@@ -203,23 +214,30 @@ void pushMessage(const char* phone, const char* text, MsgDir dir) {
     threadTop++;
     idx = threadTop;
 
-    copyBounded(threads[idx].phoneNumber, phone, MAX_PHONE_LEN);
-    threads[idx].lastMessageIndex = -1;
+    copyBounded(threads[idx].phoneNumber, phone, MAX_PHONE_LEN);  // Assign the phone number to that thread
+    threads[idx].lastMessageIndex = -1; // Now thread exists but no messages stored yet
+    // threads[idx].lastMsgTimestamp = time;  
+     
   }
 
-  MessageThread& t = threads[idx];
+  MessageThread& t = threads[idx];  // reference t for shortcut
 
-  // Append message if space remains
+  // For new / old thread/ If the conversation is not full, append new message
   if (t.lastMessageIndex + 1 < MAX_MESSAGES_PER_CONVO) {
-    t.lastMessageIndex++;
+    t.lastMessageIndex++; 
 
+    // copy the individual message into the log of messages for this thread including its body, timestamp, and direction
     copyBounded(t.messages[t.lastMessageIndex].body, text, MAX_BODY_LEN);
+    copyBounded(threads[idx].messages[t.lastMessageIndex].timestamp, time, MAX_TIMESTAMP_LEN);
     t.messages[t.lastMessageIndex].dir = dir;
+
   } else {
-    // Optional future improvement:
-    // drop oldest message and keep newest instead of doing nothing
+    // TODO
   }
 
   // Most recently active thread moves to top
   moveThreadToTop(idx);
+  
+
+
 }
