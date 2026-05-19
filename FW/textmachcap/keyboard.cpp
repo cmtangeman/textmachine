@@ -153,7 +153,7 @@ static void drawHeader() {
   kbBackBtn.initButton(2, 2, 28, 28, "<", COL_SPECIAL);
   toBtn.initButton(76, 2, tft.width() - 78, 30, "", COL_FIELD);
   msgBtn.initButton(0, 38, tft.width(), 28, "", COL_FIELD);
-  switchkeyboardButton.initButton(tft.width() - 50, 38, 48, 24, alphaMode ? "123" : "ABC", COL_SPECIAL);
+  // switchkeyboardButton.initButton(tft.width() - 50, 38, 48, 24, alphaMode ? "123" : "ABC", COL_SPECIAL);
 
   redrawTypedArea();
 }

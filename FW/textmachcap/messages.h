@@ -10,7 +10,7 @@
 // -------------------------------------------------------------------------------------------------
 
 #define MAX_CONVERSATIONS       10
-#define MAX_MESSAGES_PER_CONVO  20
+#define MAX_MESSAGES_PER_CONVO  10
 #define MAX_PHONE_LEN           20
 #define MAX_BODY_LEN            60
 #define MAX_TIMESTAMP_LEN 20

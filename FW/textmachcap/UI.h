@@ -12,4 +12,8 @@ extern const uint16_t UI_FIELD;
 void uiUseDefaultFont();
 void uiUseButtonFont();
 
+
+void updateClock();
+void updateCSQ();
+
 #endif

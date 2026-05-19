@@ -24,6 +24,7 @@
 #include "buttons.h"
 #include "messages.h"
 #include "keyboard.h"
+#include "UI.h"
 
 // ── Pin definitions ───────────────────────────────────────────────
 #define TFT_DC   7
@@ -53,12 +54,16 @@ bool numberAquired = false;
 int  displayConvo  = 0;
 
 #define MAX_PHONE_LEN        20
-#define MAX_BODY_LEN        161
-#define MAX_BODY_RECEIVE_LEN 300
+#define MAX_BODY_RECEIVE_LEN 200
 
 static char recipientNumber[MAX_PHONE_LEN];
 static char msgBody[MAX_BODY_LEN];
 
+unsigned long lastCSQUpdate  = 0;
+unsigned long lastClockUpdate = 0;
+
+#define CSQ_INTERVAL   300000  // 5 minutes
+#define CLOCK_INTERVAL 100000    // 1 min
 
 NB nbAccess;
 NB_SMS sms;
@@ -99,61 +104,53 @@ unsigned long testFilledCircles(uint8_t radius, uint16_t color) {
 }
 
 void receive() {
-  int  c;
+  int c;
   char senderNumber[30];
-  char senderBody[500];
-  char timestamp[25] = "unknown";  // default if parse fails
-  int  i = 0;
+  char senderBody[200];
+  int i = 0;
 
+  // If there are any SMSs available()
   if (sms.available()) {
+    Serial.println("Message received from:");
+    tft.println("-----------------");
+    tft.println("Message received from:");
 
-    // ── Grab timestamp via AT+CMGR ────────────────────────────
-    SerialSARA.println("AT+CMGR=1");
-    delay(300);
-    String raw = "";
-    while (SerialSARA.available()) {
-      raw += (char)SerialSARA.read();
-    }
-    // +CMGR: "REC READ","+14155551234",,"26/05/07,10:30:00-28"
-    int tsStart = raw.lastIndexOf(",\"") + 2;
-    int tsEnd   = raw.indexOf("\"", tsStart);
-    if (tsStart > 1 && tsEnd > tsStart) {
-      raw.substring(tsStart, tsEnd).toCharArray(timestamp, 25);
-      Serial.println(timestamp);
-    }
-    // ─────────────────────────────────────────────────────────
-
+    // Get remote number
     sms.remoteNumber(senderNumber, 20);
+    Serial.println(senderNumber);
+    tft.println(senderNumber);
 
-    while ((c = sms.read()) != -1 && i < 499) {
+    // Read message bytes and print them
+    while ((c = sms.read()) != -1 && i < 199) {
       senderBody[i++] = (char)c;
+      Serial.print((char)c);
+      tft.print((char)c);
     }
+
     senderBody[i] = '\0';
 
-    pushMessage(senderNumber, senderBody, IN, timestamp);
+    pushMessage(senderNumber, senderBody, IN, NULL); 
+    // storeIncomingMessage(senderNumber, senderBody);
+    // Make space for the message. 
+    tft.println();
+
+    tft.println("-----------------");
+
+
+    // Delete message from modem memory
     sms.flush();
+    Serial.println("MESSAGE DELETED FROM MODEM MEMORY SAVED IN FW/");
+  } else {
+    Serial.println("No new messages");
+    tft.println("No new messages");
   }
+  delay(500);
 }
 
 void text(const char* remoteNum, const char* message) {
     tft.fillScreen(ILI9341_BLACK);
     tft.setCursor(0, 0);
 
-    // Check signal first
-    SerialSARA.println("AT+CSQ");
-    delay(500);
-    String csq = "";
-    while (SerialSARA.available()) {
-        csq += (char)SerialSARA.read();
-    }
-
-    // CSQ of 99 means no signal
-    if (csq.indexOf("99,99") != -1 || csq.indexOf("+CSQ: 0") != -1) {
-        tft.println("No signal.");
-        tft.println("Message not sent.");
-        delay(1000);
-        return;  // bail out before endSMS
-    }
 
     // Signal looks good, attempt send
     tft.println("Sending...");
@@ -180,6 +177,7 @@ UiState currentState = UI_MENU;
 void setup() {
   Serial.begin(9600);
 
+
   pinMode(TFT_CS, OUTPUT);
   digitalWrite(TFT_CS, HIGH);
 
@@ -198,7 +196,8 @@ void setup() {
 
   bool connected = false;
 while (!connected) {
-    if (nbAccess.begin("") == NB_READY) {
+    if (nbAccess.begin("") == NB_READY) { // Does unsigned long baud = 115200; SerialSARA.begin(baud); internally 
+
         connected = true;
         
         // PSM low power modem
@@ -216,15 +215,9 @@ while (!connected) {
         String response = modem.receive(1000);  // Waits a 1000 ms to receive a string from the modem
         Serial.println(response);
   */
-    SerialSARA.println("AT+CPSMS=0");
+    // SerialSARA.println("AT+CPSMS=0");
     // SerialSARA.println("AT+CPSMS=1,,,\"00000001\",\"00001010\"");
-    delay(1000);
-    while (SerialSARA.available()) {
-        Serial.write(SerialSARA.read());
-    }
 
-        Serial.print(F("Circles (filled)         "));
-        Serial.println(testFilledCircles(10, ILI9341_BLUE));
     } else {
         tft.println("Not connected");
         delay(1000);
@@ -235,8 +228,16 @@ while (!connected) {
 // ── Loop ──────────────────────────────────────────────────────────
 
 void loop() {
+
+  unsigned long now = millis();
+
+
+
   static Button msgBtn, compBtn, refreshBtn, contactsBtn, backBtn;
   static bool isDrawnConvo = false;
+
+
+
 
   if (!menuDrawn) {
     tft.setTextColor(ILI9341_WHITE);
@@ -244,13 +245,23 @@ void loop() {
     tft.fillScreen(ILI9341_BLACK);
     tft.setRotation(ROTATION);
 
+    // (int xPos, int yPos, int butWidth, int butHeight, const char* butText, uint16_t butColor)
     msgBtn.initButton(0,  60, 240, 40, "Messages");
     compBtn.initButton(0, 110, 240, 40, "Compose");
     refreshBtn.initButton(0, 160, 240, 40, "Refresh");
     contactsBtn.initButton(0, 210, 240, 40, "Contacts");
 
+
+    // Update the time and the power
+    
+    updateClock();
+    updateCSQ();
+    
     menuDrawn = true;
   }
+
+      // Check signal first
+
 
   bool touched = false;
   ScreenPoint sp;
@@ -263,9 +274,13 @@ void loop() {
   bool justPressed = touched && !wasTouched;
   wasTouched = touched;
 
+
   switch (currentState) {
 
     case UI_MENU: {
+
+
+ 
       if (justPressed && msgBtn.isClicked(sp)) {
         currentState = UI_MESSAGES;
         return;
