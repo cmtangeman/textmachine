@@ -285,9 +285,7 @@ static void drawDebugHeader() {
   // Full screen background
   tft.fillScreen(COL_KB_BG);
 
-  // Header bar
-  tft.fillRect(0, 0, tft.width(), HEADER_H - 4, COL_HEADER);
-
+  
   // Input field
   tft.fillRect(76, 2,  tft.width() - 78, 30, COL_FIELD);
 

@@ -67,9 +67,13 @@ void addContactFromUI(const char* name, const char* phone) {
 
     copyBounded(contactList[contactCount].name, name, MAX_NAME_LEN);
     copyBounded(contactList[contactCount].phone, phone, MAX_PHONE_LEN);
+    char normalizedNumber[MAX_PHONE_LEN];
+
+    // So no doubles of the same intended phone number 
+    normalizePhoneNumber(phone, normalizedNumber, MAX_PHONE_LEN);
     contactCount++;
 
-    saveContactToSD(name, phone);
+    saveContactToSD(normalizedNumber, phone);
 }
 
 void saveContactToSD(const char* name, const char* phone) {

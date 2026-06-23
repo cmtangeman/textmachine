@@ -2,6 +2,7 @@
 #include "types.h"
 #include "buttons.h"
 #include "contacts.h"
+#include "SD.h"
 
 #include <string.h>
 #include <Adafruit_GFX.h>
@@ -36,6 +37,61 @@ static bool conversationDrawn   = false;
 static int  findThreadByPhone(const char* phone);
 static void moveThreadToTop(int idx);
 static void copyBounded(char* dst, const char* src, size_t dstSize);
+
+// -------------------------------------------------------------------------------------------------
+// Phone normalization helper
+// -------------------------------------------------------------------------------------------------
+
+void normalizePhoneNumber(const char* input, char* output, int outLen){
+  int i = 0;
+  int d = 0;
+  if(input[0] == '+'){
+i++;
+  } 
+
+  char digits[20] = {0};
+
+// copy only digits over
+  for (; input[i] && d < 19; i++) {
+      if (isdigit(input[i])) digits[d++] = input[i];
+  }
+
+// 
+digits[d++] = '\0';
+
+  if(d == 10) {
+    // Add +1
+    snprintf(output,outLen,"+1%s", digits);
+  }else if(d == 11 && digits[0] == 1){
+    // Add +
+    snprintf(output,outLen,"+%s", digits);
+  } else {
+        // short code or international — leave as-is with +
+        snprintf(output, outLen, "+%s", digits);
+    }
+
+
+}
+
+void saveMessageToSD(const char* phone, Msg& msg) {
+    if (msg.saved) return;  // ← already saved, don't duplicate
+    
+    char filename[40];
+    char normalized[MAX_PHONE_LEN];
+    normalizePhoneNumber(phone, normalized, MAX_PHONE_LEN);
+    snprintf(filename, sizeof(filename), "/msg/%s.csv", normalized + 1);
+
+    File f = SD.open(filename, FILE_WRITE);
+    if (!f) return;
+
+    f.print(phone);           f.print("|");
+    f.print(msg.body);        f.print("|");
+    f.print(msg.timestamp);   f.print("|");
+    f.println(msg.dir == IN ? "IN" : "OUT");
+    f.close();
+
+    msg.saved = true;  // mark so it can never be written twice
+}
 
 // -------------------------------------------------------------------------------------------------
 // UI helpers

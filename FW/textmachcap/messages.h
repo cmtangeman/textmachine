@@ -34,6 +34,7 @@ struct Msg {
   char body[MAX_BODY_LEN];
   char timestamp[MAX_TIMESTAMP_LEN];
   MsgDir dir;
+  bool saved;
 };
 
 struct MessageThread {
@@ -42,12 +43,15 @@ struct MessageThread {
   int lastMessageIndex;
 };
 
-// -------------------------------------------------------------------------------------------------
-// Public API
-// -------------------------------------------------------------------------------------------------
+
+// Helper
+void normalizePhoneNumber(const char* input, char* output, int outLen);
+
 
 // Storage
 void pushMessage(const char* phone, const char* text, MsgDir dir, const char* time);
+
+void saveMessageToSD(const char* phone, Msg& msg);
 
 // Recent messages UI
 int  recentMessagesScreen(const ScreenPoint& sp, bool justPressed);

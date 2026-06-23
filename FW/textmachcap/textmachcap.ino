@@ -104,6 +104,11 @@ bool ctpRead(ScreenPoint& sp) {
 
 // ── NB / SMS helpers ──────────────────────────────────────────────
 
+// Set everything in terms of E. 164 the standard format for international telephone numbers. 
+// Correct U.S not using +1 or 1 and otherwise treat as EUROPEAN number with correct country code
+// Ignore + input for all and concatenate to first digit for all as well.
+
+
 
 void receive() {
   int c;
@@ -122,6 +127,10 @@ void receive() {
     Serial.println(senderNumber);
     tft.println(senderNumber);
 
+    char normalizedNumber[MAX_PHONE_LEN];
+    normalizePhoneNumber(senderNumber, normalizedNumber, MAX_PHONE_LEN);
+
+
     // Read message bytes and print them
     while ((c = sms.read()) != -1 && i < 199) {
       senderBody[i++] = (char)c;
@@ -131,7 +140,7 @@ void receive() {
 
     senderBody[i] = '\0';
 
-    pushMessage(senderNumber, senderBody, IN, "Unknown");
+    pushMessage(normalizedNumber, senderBody, IN, "Unknown");
     // storeIncomingMessage(senderNumber, senderBody);
     // Make space for the message.
     tft.println();
@@ -217,6 +226,8 @@ void setup() {
       Serial.println("Failed to create contacts.csv");
     }
   }
+  if (!SD.exists("messages.csv")) {
+
 
   // Reset touch controller
   pinMode(CTP_RST, OUTPUT);
@@ -267,6 +278,7 @@ void setup() {
       delay(1000);
     }
   }
+}
 }
 
 // ── Loop ──────────────────────────────────────────────────────────
@@ -406,6 +418,7 @@ void loop() {
           }
           if (justPressed && msgBtnPressed(sp)) {
             const char* kb = keyboardGetText();
+            normalizePhoneNumber(kb, recipientNumber, MAX_PHONE_LEN); // So no double of same numbers
             strncpy(recipientNumber, kb, MAX_PHONE_LEN - 1);
             recipientNumber[MAX_PHONE_LEN - 1] = '\0';
             numberAquired = true;
@@ -512,6 +525,7 @@ void loop() {
 
           else if (keyboardTick(sp, justPressed, KB_ADD_CONTACT)) {
             const char* kb2 = keyboardGetText();
+            
             strncpy(newContactName, kb2, sizeof(newContactName) - 1);
             newContactName[sizeof(newContactName) - 1] = '\0';
             addContactFromUI(newContactName, newContactPhone);
