@@ -24,6 +24,7 @@
 #include "buttons.h"
 #include "messages.h"
 #include "keyboard.h"
+#include "contacts.h"
 #include "UI.h"
 
 // ── Pin definitions ───────────────────────────────────────────────
@@ -157,6 +158,7 @@ void receive() {
   }
   delay(500);
 }
+
 
 void text(const char* remoteNum, const char* message) {
   tft.fillScreen(ILI9341_BLACK);
@@ -419,11 +421,20 @@ void loop() {
           if (justPressed && msgBtnPressed(sp)) {
             const char* kb = keyboardGetText();
             normalizePhoneNumber(kb, recipientNumber, MAX_PHONE_LEN); // So no double of same numbers
-            strncpy(recipientNumber, kb, MAX_PHONE_LEN - 1);
+            // strncpy(recipientNumber, kb, MAX_PHONE_LEN - 1); THis was overwriting the normalized e.164 formatted phone # 
             recipientNumber[MAX_PHONE_LEN - 1] = '\0';
             numberAquired = true;
             //keyboardClearText();
+
+            // Check if it matches a contact
+            int idx = findContactName(recipientNumber); // Looks by phone # and returns idx
+
+            if(idx == -1){
             keyboardSwitchToMessageField(recipientNumber);
+            }else{
+            keyboardSwitchToMessageField(getContactName(idx));
+            }
+
             Serial.println("Phone # acquired");
             wasTouched = true;
           } else if (keyboardTick(sp, justPressed, KB_COMPOSE)) {

@@ -21,7 +21,9 @@ void saveContactToSD(const char* name, const char* phone);
 void loadContactsFromSD();
 int  findContactPhone(const char* name);
 int  findContactName(const char* phone);
+
 const char* getContactPhone(int index);
+const char* getContactName(int index);
 
 
 #endif

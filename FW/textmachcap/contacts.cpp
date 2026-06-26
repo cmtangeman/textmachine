@@ -59,6 +59,13 @@ const char* getContactPhone(int index) {
   return contactList[index].phone;
 }
 
+const char* getContactName(int index) {
+  if (index < 0 || index >= contactCount) {
+    return nullptr;
+  }
+  return contactList[index].name;
+}
+
 void addContactFromUI(const char* name, const char* phone) {
     if (contactCount >= MAX_CONTACTS) {
         Serial.println("Contact list full.");
