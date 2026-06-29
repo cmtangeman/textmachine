@@ -6,6 +6,7 @@
 
 Contact contactList[MAX_CONTACTS];
 static int contactCount = 0;
+static int contactScrollOffset = 0;
 
 
 // Forward declaration (Serial helper from main sketch)
@@ -14,18 +15,29 @@ extern int readInt();
 
 
 static Button contactBtns[MAX_CONTACTS];
+static Button deleteContactBtns[MAX_CONTACTS];
 static Button contactsBackBtn;
 static Button newContactsBtn;
+
+static Button scrollUpBtn;
+static Button scrollDownBtn;
+
 static bool   contactsDrawn = false;
+
+
+
+static int MAX_VISIBLE = 6;
 
 void contactsInit() {
   contactCount = 0;
-
 }
 
 void contactsScreenReset() {
   contactsDrawn = false;
+  contactScrollOffset = 0;
 }
+
+void deleteContact(int idx);
 
 int findContactPhone(const char* name) {
     for (int i = 0; i < contactCount; i++) {
@@ -72,15 +84,16 @@ void addContactFromUI(const char* name, const char* phone) {
         return;
     }
 
-    copyBounded(contactList[contactCount].name, name, MAX_NAME_LEN);
-    copyBounded(contactList[contactCount].phone, phone, MAX_PHONE_LEN);
     char normalizedNumber[MAX_PHONE_LEN];
-
-    // So no doubles of the same intended phone number 
     normalizePhoneNumber(phone, normalizedNumber, MAX_PHONE_LEN);
+
+    copyBounded(contactList[contactCount].name, name, MAX_NAME_LEN);
+    copyBounded(contactList[contactCount].phone, normalizedNumber, MAX_PHONE_LEN);
+    
+    
     contactCount++;
 
-    saveContactToSD(normalizedNumber, phone);
+    saveContactToSD(name, normalizedNumber);
 }
 
 void saveContactToSD(const char* name, const char* phone) {
@@ -125,8 +138,10 @@ void loadContactsFromSD() {
 int contactsScreen(const ScreenPoint& sp, bool justPressed) {
   const int listStartY = 50;
   const int rowH       = 40;
-  const int x          = 10;
-  const int w          = 220;
+  const int x          = 0;
+  const int w          = 160;
+
+  int visibleCount = min(MAX_VISIBLE, contactCount - contactScrollOffset); // so that I never try to draw more contacts then I have
 
   if (!contactsDrawn) {
     Serial.print("contactCount = ");
@@ -138,39 +153,103 @@ int contactsScreen(const ScreenPoint& sp, bool justPressed) {
     contactsBackBtn.initButton(0, 0, 30, 30, "<");
     newContactsBtn.initButton(200, 0, 30, 30, "+");
 
+    if (contactScrollOffset > 0) {
+    scrollUpBtn.initButton(210, listStartY, 30, 30, "^");
+    }
+
+    if(contactScrollOffset+MAX_VISIBLE < contactCount){
+    scrollDownBtn.initButton(210, listStartY + MAX_VISIBLE * rowH - 30, 30, 30, "v");
+    }
+
+
     tft.setCursor(50, 10);
     tft.print("Contacts");
 
-    for (int i = 0; i < contactCount; i++) {
-      int y = listStartY + i * rowH;
 
-      contactBtns[i].initButton(x, y, w, rowH, contactList[i].name);
+for (int i = 0; i < visibleCount; i++) {
+    int contactIdx = i + contactScrollOffset;  // ← actual contact
+    int y = listStartY + i * rowH;             // ← screen position
 
-      // phone number on the right, smaller
-      tft.setTextSize(1);
-      tft.setCursor(x + 130, y + 12);
-      tft.print(contactList[i].phone);
-      tft.setTextSize(2);
-    }
+    contactBtns[i].initButton(x, y, w, rowH, contactList[contactIdx].name);  // ← contactIdx
+    deleteContactBtns[i].initButton(165, y, 30, rowH, "X");
+
+    tft.setTextSize(1);
+    tft.setCursor(x + 80, y + 12);
+    tft.print(contactList[contactIdx].phone);  // ← contactIdx
+    tft.setTextSize(2);
+
+    tft.drawFastHLine(0, y + rowH, 195, ILI9341_WHITE);
+}
 
     contactsDrawn = true;
   }
 
   if (!justPressed) return -1;
 
+  // ── Scroll buttons ────────────────────────────────────────
+  if (scrollUpBtn.isClicked(sp)) {
+      if (contactScrollOffset > 0) {
+          contactScrollOffset--;
+          contactsDrawn = false;
+      }
+        return -1;
+  }
+
+  if (scrollDownBtn.isClicked(sp)) {
+        if (contactScrollOffset + MAX_VISIBLE < contactCount) {
+            contactScrollOffset++;
+            contactsDrawn = false;
+        }
+        return -1;
+  }
+
   if (contactsBackBtn.isClicked(sp)) return -2;  // caller checks for back
 
   if (newContactsBtn.isClicked(sp)) return -3; // Add a new contact! 
 
-  for (int i = 0; i < contactCount; i++) {
+  // Contact/ Delete contact check 
+  for (int i = 0; i < visibleCount; i++) {
     if (contactBtns[i].isClicked(sp)) {
-      return i;  // index into contactList[]
+      return i + contactScrollOffset;  // index into contactList[]
+    }
+
+    if (deleteContactBtns[i].isClicked(sp)) {
+        deleteContact(i+contactScrollOffset);
+        contactsDrawn = false;  // force redraw
+        return -1;
     }
   }
 
   return -1;
 }
 
+void deleteContact(int idx){
+  if (idx < 0 || idx >= contactCount) return;
+
+  for(int i = idx; i < contactCount - 1; i++){
+    copyBounded(contactList[i].name, contactList[i+1].name, MAX_NAME_LEN);
+    copyBounded(contactList[i].phone, contactList[i+1].phone, MAX_PHONE_LEN);
+  }
+  contactCount--;
+
+  SD.remove("contacts.csv");
+    File f = SD.open("contacts.csv", FILE_WRITE);
+    if (f) {
+        for (int i = 0; i < contactCount; i++) {
+            f.print(contactList[i].name);
+            f.print("|");
+            f.println(contactList[i].phone);
+        }
+        f.close();
+        Serial.println("Contact deleted, CSV updated");
+    }
+
+}
+
+
+
+/*
+Serial Based old code
 
 void addContact() {
   if (contactCount >= MAX_CONTACTS) {
@@ -189,10 +268,6 @@ void addContact() {
   contactCount++;
   Serial.println("Contact saved.");
 }
-
-/*
-Serial Based old code
-
 
 void viewContacts() {
   if (contactCount == 0) {

@@ -482,16 +482,19 @@ void loop() {
         }
         if (picked != -1) {
           const char* phone = getContactPhone(picked);
-          if (phone != nullptr) {
-            strncpy(recipientNumber, phone, MAX_PHONE_LEN - 1);
+        if (phone != nullptr) {
+            strncpy(recipientNumber, phone, MAX_PHONE_LEN - 1);  // already normalized
             recipientNumber[MAX_PHONE_LEN - 1] = '\0';
             numberAquired = true;
             contactsScreenReset();
             keyboardReset();
-            keyboardSwitchToMessageField(recipientNumber);
+            
+            const char* name = getContactName(picked);
+            keyboardSwitchToMessageField(name != nullptr ? name : recipientNumber);
+            
             currentState = UI_COMPOSE;
             return;
-          }
+        }
         }
         break;
       }
@@ -513,7 +516,7 @@ void loop() {
           // step 1 — PHONE NUMBER (numpad, no changes needed since keyboardReset starts in numpad)
           if (justPressed && nameBtnPressed(sp)) {
             const char* kb = keyboardGetText();
-            strncpy(newContactPhone, kb, MAX_PHONE_LEN - 1);
+            normalizePhoneNumber(kb, newContactPhone, MAX_PHONE_LEN);
             newContactPhone[MAX_PHONE_LEN - 1] = '\0';
             numberAquired = true;
             keyboardSwitchToMessageField(newContactPhone);  // freeze phone in To: field
