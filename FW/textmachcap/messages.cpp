@@ -287,7 +287,5 @@ void pushMessage(const char* phone, const char* text, MsgDir dir, const char* ti
 
   // Most recently active thread moves to top
   moveThreadToTop(idx);
-  
-
 
 }

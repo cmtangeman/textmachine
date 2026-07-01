@@ -150,3 +150,46 @@ void updateBattery() {
     tft.print(vbat, 2);
     tft.print("V");
 }
+
+void formatTimestamp(const char* raw, char* output, int outLen) {
+    // raw = "26/06/30,22:03:51-28"
+    //        0123456789012345678901
+
+    if (!raw || strlen(raw) < 17) {
+        strncpy(output, raw, outLen);
+        return;
+    }
+
+    // parse fields by fixed index
+    int year   = (raw[0]-'0')*10 + (raw[1]-'0');  // 26
+    int month  = (raw[3]-'0')*10 + (raw[4]-'0');  // 06
+    int day    = (raw[6]-'0')*10 + (raw[7]-'0');  // 30
+    int hour   = (raw[9]-'0')*10 + (raw[10]-'0'); // 22
+    int minute = (raw[12]-'0')*10 + (raw[13]-'0');// 03
+
+    // apply timezone offset
+    int offsetQuarters = atoi(raw + 17);  // -28
+    int offsetHours    = offsetQuarters / 4;  // -7
+    hour = ((hour + offsetHours) % 24 + 24) % 24;
+
+    // determine day of week using Zeller's formula
+    // adjust month — Zeller treats Jan/Feb as months 13/14 of previous year
+    int m = month;
+    int y = 2000 + year;
+    if (m < 3) { m += 12; y--; }
+    int k = y % 100;
+    int j = y / 100;
+    int dow = (day + (13*(m+1))/5 + k + k/4 + j/4 - 2*j) % 7;
+    // Zeller: 0=Sat, 1=Sun, 2=Mon, 3=Tue, 4=Wed, 5=Thu, 6=Fri
+    const char* days[] = {"Sat","Sun","Mon","Tue","Wed","Thu","Fri"};
+
+    // get today for comparison — use AT+CCLK or hardcode check
+    // for now just check if it was within last 7 days
+    // simple approach: if day matches one of last 7 days show weekday
+    // otherwise show date
+
+    // determine if within this week — compare to current day
+    // you already have updateClock() which reads AT+CCLK
+    // for now just always show weekday + time
+    snprintf(output, outLen, "%s %02d:%02d", days[dow], hour, minute);
+}

@@ -4,6 +4,7 @@
 #include <Arduino.h>
 
 #define MAX_CONTACTS  50
+#define MAX_TIMESTAMP_LEN 20
 #define MAX_NAME_LEN  20
 #define MAX_PHONE_LEN 20
 #define MAX_BODY_RECEIVE_LEN 200

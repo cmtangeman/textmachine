@@ -17,4 +17,6 @@ void updateClock();
 void updateCSQ();
 void updateBattery();
 
+void formatTimestamp(const char* raw, char* output, int outLen);
+
 #endif

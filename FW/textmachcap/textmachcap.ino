@@ -112,51 +112,113 @@ bool ctpRead(ScreenPoint& sp) {
 
 
 void receive() {
-  int c;
-  char senderNumber[30];
-  char senderBody[200];
-  int i = 0;
+    SerialSARA.println("AT+CMGF=1");
+    delay(200);
+    while (SerialSARA.available()) SerialSARA.read(); // Wait until ready 
 
-  // If there are any SMSs available()
-  if (sms.available()) {
-    Serial.println("Message received from:");
-    tft.println("-----------------");
-    tft.println("Message received from:");
+    SerialSARA.println("AT+CMGL=\"REC UNREAD\"");
+    delay(1000);
 
-    // Get remote number
-    sms.remoteNumber(senderNumber, 20);
-    Serial.println(senderNumber);
-    tft.println(senderNumber);
-
-    char normalizedNumber[MAX_PHONE_LEN];
-    normalizePhoneNumber(senderNumber, normalizedNumber, MAX_PHONE_LEN);
-
-
-    // Read message bytes and print them
-    while ((c = sms.read()) != -1 && i < 199) {
-      senderBody[i++] = (char)c;
-      Serial.print((char)c);
-      tft.print((char)c);
+    //Read entire response first 
+    String fullResponse = "";
+    while (SerialSARA.available()) {
+        char c = (char)SerialSARA.read();
+        fullResponse += c;
     }
 
-    senderBody[i] = '\0';
+    // Print for debug 
+    Serial.println("=== MODEM RESPONSE ===");
+    Serial.println(fullResponse);
+    Serial.println("======================");
 
-    pushMessage(normalizedNumber, senderBody, IN, "Unknown");
-    // storeIncomingMessage(senderNumber, senderBody);
-    // Make space for the message.
-    tft.println();
+    //  Now parse line by line
+    bool anyReceived = false;
+    int parseIdx = 0;
 
-    tft.println("-----------------");
+    while (parseIdx < (int)fullResponse.length()) {
+        // find next line
+        int lineEnd = fullResponse.indexOf('\n', parseIdx);
+        if (lineEnd == -1) break;
+
+        String line = fullResponse.substring(parseIdx, lineEnd);
+        line.replace("\r", "");  // strip carriage return
+        parseIdx = lineEnd + 1;
+
+        if (!line.startsWith("+CMGL:")) continue;
+
+        anyReceived = true;
+
+        // extract index
+        int colonIdx = line.indexOf(':');
+        int commaIdx = line.indexOf(',');
+        int msgIndex = line.substring(colonIdx + 2, commaIdx).toInt();
+        Serial.println(msgIndex);
+
+        // extract sender
+        int q1 = line.indexOf('"', commaIdx);
+        int q2 = line.indexOf('"', q1 + 1);
+        int q3 = line.indexOf('"', q2 + 1);
+        int q4 = line.indexOf('"', q3 + 1);
+        String sender = line.substring(q3 + 1, q4);
+
+        // extract timestamp
+        int lastQ2 = line.lastIndexOf('"');
+        int lastQ1 = line.lastIndexOf('"', lastQ2 - 1);
+        String timestamp = line.substring(lastQ1 + 1, lastQ2);
+
+        // read body — next non-empty line
+        String body = "";
+        while (parseIdx < (int)fullResponse.length()) {
+            int nextEnd = fullResponse.indexOf('\n', parseIdx);
+            if (nextEnd == -1) nextEnd = fullResponse.length();
+            String nextLine = fullResponse.substring(parseIdx, nextEnd);
+            nextLine.replace("\r", "");
+            parseIdx = nextEnd + 1;
+            if (nextLine.length() > 0 && !nextLine.startsWith("+CMGL") && !nextLine.startsWith("OK")) {
+                body = nextLine;
+                break;
+            }
+        }
+
+        Serial.print("From: "); Serial.println(sender);
+        Serial.print("Time: "); Serial.println(timestamp);
+        Serial.print("Body: "); Serial.println(body);
+
+        char normalizedNumber[MAX_PHONE_LEN];
+        char timestampBuf[MAX_TIMESTAMP_LEN];
+        char bodyBuf[200];
 
 
-    // Delete message from modem memory
-    sms.flush();
-    Serial.println("MESSAGE DELETED FROM MODEM MEMORY SAVED IN FW/");
-  } else {
-    Serial.println("No new messages");
-    tft.println("No new messages");
-  }
-  delay(500);
+
+        normalizePhoneNumber(sender.c_str(), normalizedNumber, MAX_PHONE_LEN);
+        copyBounded(timestampBuf, timestamp.c_str(), MAX_TIMESTAMP_LEN);
+        copyBounded(bodyBuf, body.c_str(), 200);
+
+        char formatted[20];
+        formatTimestamp(timestampBuf, formatted, sizeof(formatted));
+        Serial.println(formatted);
+
+
+        pushMessage(normalizedNumber, bodyBuf, IN, formatted);
+
+
+        // Flush out the read message 
+        char delCmd[20];
+        snprintf(delCmd, sizeof(delCmd), "AT+CMGD=%d", msgIndex);
+        SerialSARA.println(delCmd);
+        delay(300);
+        while (SerialSARA.available()) SerialSARA.read();
+    }
+    // Keep goinh until we have looped through the entire message 
+    // (modem prints out all of the unread messages)
+
+    if (!anyReceived) {
+        Serial.println("No new messages");
+        tft.fillScreen(ILI9341_BLACK);
+        tft.setCursor(0, 0);
+        tft.println("No new messages");
+    }
+    delay(500);
 }
 
 
