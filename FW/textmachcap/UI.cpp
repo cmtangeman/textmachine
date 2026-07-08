@@ -191,15 +191,39 @@ void formatTimestamp(const char* raw, char* output, int outLen) {
     // apply timezone offset
     int offsetQuarters = atoi(raw + 17);  // -28
     int offsetHours    = offsetQuarters / 4;  // -7
-    hour = ((hour + offsetHours) % 24 + 24) % 24;
+
+    int y = 2000 + year;
+    static const int8_t daysInMonth[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+
+    // Roll the calendar date forward/back whenever the offset pushes the hour across
+    // midnight — otherwise the day-of-week below is computed against the wrong date
+    // (hour would show the correct wrapped time, but the weekday label would be off by one).
+    hour += offsetHours;
+    while (hour >= 24) {
+        hour -= 24;
+        day++;
+        bool leap = (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0));
+        int dim = (month == 2 && leap) ? 29 : daysInMonth[month - 1];
+        if (day > dim) { day = 1; month++; if (month > 12) { month = 1; y++; } }
+    }
+    while (hour < 0) {
+        hour += 24;
+        day--;
+        if (day < 1) {
+            month--;
+            if (month < 1) { month = 12; y--; }
+            bool leap = (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0));
+            day = (month == 2 && leap) ? 29 : daysInMonth[month - 1];
+        }
+    }
 
     // determine day of week using Zeller's formula
     // adjust month — Zeller treats Jan/Feb as months 13/14 of previous year
     int m = month;
-    int y = 2000 + year;
-    if (m < 3) { m += 12; y--; }
-    int k = y % 100;
-    int j = y / 100;
+    int zy = y;
+    if (m < 3) { m += 12; zy--; }
+    int k = zy % 100;
+    int j = zy / 100;
     int dow = (day + (13*(m+1))/5 + k + k/4 + j/4 - 2*j) % 7;
     // Zeller: 0=Sat, 1=Sun, 2=Mon, 3=Tue, 4=Wed, 5=Thu, 6=Fri
     const char* days[] = {"Sat","Sun","Mon","Tue","Wed","Thu","Fri"};

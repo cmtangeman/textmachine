@@ -349,7 +349,7 @@ void loop() {
     compBtn.initButton(0, 110, 240, 40, "Compose");
     refreshBtn.initButton(0, 160, 240, 40, "Refresh");
     contactsBtn.initButton(0, 210, 240, 40, "Contacts");
-    debugBtn.initButton(0, 260, 240, 40, "Debug");
+   //  debugBtn.initButton(0, 260, 240, 40, "Debug");
 
 
     // Update the time and the power
@@ -447,6 +447,23 @@ void loop() {
           currentState = UI_MESSAGES;
           wasTouched = true;
           return;
+        }
+        if (justPressed && convoReplyBtnPressed(sp)) {
+          const char* phone = getConversationPhone(displayConvo);
+          if (phone != nullptr) {
+            strncpy(recipientNumber, phone, MAX_PHONE_LEN - 1);  // already normalized
+            recipientNumber[MAX_PHONE_LEN - 1] = '\0';
+            numberAquired = true;
+            conversationReset();
+            recentMessagesReset();
+            keyboardReset();
+
+            int cidx = findContactName(recipientNumber);
+            keyboardSwitchToMessageField(cidx != -1 ? getContactName(cidx) : recipientNumber);
+
+            currentState = UI_COMPOSE;
+            return;
+          }
         }
         break;
       }
@@ -595,6 +612,8 @@ void loop() {
 
         break;
       }
+
+      /*
 case UI_DEBUG: {
   if (justPressed && keyboardBackPressed(sp)) {
     keyboardReset();
@@ -627,6 +646,7 @@ case UI_DEBUG: {
   }
   break;
 }
+*/
 
 
 

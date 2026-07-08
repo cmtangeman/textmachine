@@ -49,16 +49,44 @@ bool Button::isClicked(const ScreenPoint& sp) {
   return (sp.x >= x && sp.x <= (x + width) && sp.y >= y && sp.y <= (y + height));
 }
 
+void msgButton::initMsgButton(int xPos, int yPos, int butWidth, int butHeight,
+                               const char* msg, MsgDir direction, bool isKept) {
+  x = xPos;
+  y = yPos;
+  width = butWidth;
+  height = butHeight;
+  text = msg;
+  dir = direction;
+  kept = isKept;
+  render();
+}
+
 void msgButton::render() {
-    uint16_t bubbleColor = (dir == OUT) 
+    uint16_t bubbleColor = (dir == OUT)
         ? tft.color565(0, 122, 255)   // iOS blue for outgoing
         : tft.color565(60, 60, 60);   // grey for incoming
 
     tft.fillRoundRect(x, y, width, height, 8, bubbleColor);
     tft.setTextColor(ILI9341_WHITE);
     tft.setTextSize(1);
-    tft.setCursor(x + 6, y + 6);
-    tft.print(text);
+
+    const int padding    = 6;
+    const int lineHeight = 10;
+
+    char lines[MAX_MSG_RENDER_LINES][MAX_BODY_LEN];
+    int lineCount = wrapMessageText(text, width - 2 * padding, lines, MAX_MSG_RENDER_LINES);
+    if (lineCount > MAX_MSG_RENDER_LINES) lineCount = MAX_MSG_RENDER_LINES;
+
+    for (int i = 0; i < lineCount; i++) {
+        tft.setCursor(x + padding, y + padding + i * lineHeight);
+        tft.print(lines[i]);
+    }
+
+    // "Kept" indicator — small dot that appears once you tap the bubble, Snapchat-style
+    if (kept) {
+        int dotR = 4;
+        tft.fillCircle(x + width - dotR - 4, y + dotR + 4, dotR, ILI9341_YELLOW);
+    }
 }
 
 

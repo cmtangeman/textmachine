@@ -30,8 +30,10 @@ static Button threadBtns[MAX_CONVERSATIONS];  // Initialize as much buttons as w
 static msgButton convoMsgBtns[MAX_MESSAGES_PER_CONVO];  // one bubble per message in the open thread
 static Button convoScrollUpBtn;
 static Button convoScrollDownBtn;
-static int convoScrollOffset = 0;   // messages scrolled back from the newest (0 = showing newest at bottom)
-static int convoVisibleTop   = 0;   // oldest message index currently drawn on screen
+static Button convoReplyBtn;        // "Text" — jumps to compose with this thread's number prefilled
+static int convoScrollOffset  = 0;  // messages scrolled back from the newest (0 = showing newest at bottom)
+static int convoVisibleTop    = 0;  // oldest message index currently drawn on screen
+static int convoVisibleBottom = -1; // newest message index currently drawn on screen
 
 static bool recentMessagesDrawn = false;
 static bool conversationDrawn   = false;
@@ -289,12 +291,23 @@ bool convoBackBtnPressed(const ScreenPoint& sp) {
   return convoBackBtn.isClicked(sp);
 }
 
+bool convoReplyBtnPressed(const ScreenPoint& sp) {
+  return convoReplyBtn.isClicked(sp);
+}
+
+const char* getConversationPhone(int selection) {
+  int idx = threadTop - selection;
+  if (idx < 0 || idx > threadTop) return nullptr;
+  return threads[idx].phoneNumber;
+}
+
 void recentMessagesReset() {
   recentMessagesDrawn = false;
 }
 
 void conversationReset() {
   conversationDrawn = false;
+  convoScrollOffset = 0;  // always reopen a thread scrolled to the newest message
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -368,44 +381,97 @@ int recentMessagesScreen(const ScreenPoint& sp, bool justPressed) {
 // -------------------------------------------------------------------------------------------------
 
 bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPressed) {
-  const int msgStartY = 200; // start here then print each message in a interactable box going upwards. 
-  const int headerEndY = 50; // Below the header will be the messages 
-  
+  const int headerEndY     = 50;    // back button + contact name — stays fixed, never scrolls
+  const int msgRegionTop   = headerEndY;
+  const int msgRegionBottom = 200;  // newest bubble's bottom edge lands here
+  const int replyBtnY      = msgRegionBottom + 10;
+  const int replyBtnH      = 40;
 
+  const int bubbleMarginX = 10;
+  const int scrollColW    = 30;     // reserved right-hand column for scroll buttons, mirrors contactsScreen
+  const int bubbleWidth   = tft.width() - bubbleMarginX * 2 - scrollColW;
+  const int bubblePadding = 6;
+  const int lineHeight    = 10;
+  const int bubbleGapY    = 6;
+
+  int idx = threadTop - selection;
+  if (idx < 0 || idx > threadTop) return false;
+
+  MessageThread& t = threads[idx];
 
   if (!conversationDrawn) {
-    int idx = threadTop - selection;
-    if (idx < 0 || idx > threadTop) return false;
-
-    MessageThread& t = threads[idx];  // MessageThread& , an adress?
-
     tft.fillScreen(ILI9341_BLACK);
     tft.setTextColor(ILI9341_WHITE);
     tft.setTextSize(2);
 
     convoBackBtn.initButton(0, 0, 30, 30, "<");
 
-    tft.setCursor(0, 50);
-
+    tft.setCursor(50, 10);
     int cidx = findContactName(t.phoneNumber);
     if (cidx != -1) {
-
-      tft.println(contactList[cidx].name);
+      tft.print(contactList[cidx].name);
     } else {
-      tft.println(t.phoneNumber);
+      tft.print(t.phoneNumber);
     }
 
-    // tft.println("----------------");
+    // ── Lay out bubbles bottom-up: newest at msgRegionBottom, older ones stack upward ──
+    int newestIdx = t.lastMessageIndex - convoScrollOffset;
+    if (newestIdx > t.lastMessageIndex) newestIdx = t.lastMessageIndex;
 
-    const int maxShow = 6;
-    int shown = 0;
+    int y = msgRegionBottom;
+    int oldestVisible = newestIdx + 1;  // decremented as messages are fit in below
 
-    for (int i = t.lastMessageIndex; i >= 0 && shown < maxShow; i--, shown++) {
-      tft.print(t.messages[i].dir == IN ? "< " : "> ");
-      tft.println(t.messages[i].body);
+    for (int i = newestIdx; i >= 0; i--) {
+      int lines = measureMessageLines(t.messages[i].body, bubbleWidth - 2 * bubblePadding);
+      int h = lines * lineHeight + 2 * bubblePadding;
+
+      if (y - h < msgRegionTop) break;  // no more room — rest is reachable only by scrolling
+
+      y -= h;
+      convoMsgBtns[i].initMsgButton(bubbleMarginX, y, bubbleWidth, h,
+                                    t.messages[i].body, t.messages[i].dir, t.messages[i].kept);
+      oldestVisible = i;
+      y -= bubbleGapY;
     }
+
+    convoVisibleTop    = oldestVisible;
+    convoVisibleBottom = newestIdx;
+
+    // ── Scroll buttons — same up/down-by-one pattern as contactsScreen ──
+    if (convoVisibleTop > 0) {
+      convoScrollUpBtn.initButton(tft.width() - scrollColW, msgRegionTop, scrollColW, 30, "^");
+    }
+    if (convoScrollOffset > 0) {
+      convoScrollDownBtn.initButton(tft.width() - scrollColW, msgRegionBottom - 30, scrollColW, 30, "v");
+    }
+
+    // ── Reply button — jumps to compose with this thread's number prefilled ──
+    convoReplyBtn.initButton(bubbleMarginX, replyBtnY, tft.width() - 2 * bubbleMarginX, replyBtnH, "Text");
 
     conversationDrawn = true;
+  }
+
+  if (!justPressed) return true;
+
+  if (convoVisibleTop > 0 && convoScrollUpBtn.isClicked(sp)) {
+    convoScrollOffset++;
+    conversationDrawn = false;
+    return true;
+  }
+
+  if (convoScrollOffset > 0 && convoScrollDownBtn.isClicked(sp)) {
+    convoScrollOffset--;
+    conversationDrawn = false;
+    return true;
+  }
+
+  // ── Tap a bubble to toggle its "kept" indicator ──
+  for (int i = convoVisibleTop; i <= convoVisibleBottom; i++) {
+    if (convoMsgBtns[i].isClicked(sp)) {
+      t.messages[i].kept = !t.messages[i].kept;
+      conversationDrawn = false;  // redraw so the indicator updates
+      return true;
+    }
   }
 
   return true;

@@ -25,11 +25,12 @@ public:
   void drawBackButton();
 };
 
-class msgButton : public Button { // inheriting from Button 
+class msgButton : public Button { // inheriting from Button
 public:
     MsgDir dir;
+    bool kept;  // shows a small "kept" indicator when tapped on, like Snapchat's keep marker
     void initMsgButton(int xPos, int yPos, int butWidth, int butHeight,
-                       const char* msg, MsgDir direction);
+                       const char* msg, MsgDir direction, bool isKept);
     void render();
 };
 
