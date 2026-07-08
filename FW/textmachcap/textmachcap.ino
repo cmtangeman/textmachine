@@ -41,7 +41,7 @@
 #define FT_REG_NUMTOUCHES 0x02
 #define FT_REG_TOUCH1 0x03
 
-#include <SD.h>
+#include <SD.h> // system library rather than looking for local file. 
 #include "contacts.h"
 
 static bool kbDrawnFlag = false;
@@ -234,7 +234,11 @@ void text(const char* remoteNum, const char* message) {
   int result = sms.endSMS();
 
   if (result == 1) {
-    pushMessage(remoteNum, message, OUT, "Unknown");
+    char sentTimestamp[MAX_TIMESTAMP_LEN];
+    if (!getCurrentTimestamp(sentTimestamp, sizeof(sentTimestamp))) { // If our timestamp function messes up 
+      copyBounded(sentTimestamp, "Unknown", sizeof(sentTimestamp));
+    }
+    pushMessage(remoteNum, message, OUT, sentTimestamp);
     tft.println("Sent!");
   } else {
     tft.println("Failed.");
@@ -260,81 +264,56 @@ UiState currentState = UI_MENU;
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial && millis() < 3000)
-    ;
+  while (!Serial && millis() < 3000);
 
+  // ── Pin setup ─────────────────────────────────────────
   pinMode(TFT_CS, OUTPUT);
   digitalWrite(TFT_CS, HIGH);
   pinMode(SD_CS, OUTPUT);
   digitalWrite(SD_CS, HIGH);
 
-  int retries = 3;
-  while (retries--) {
-    if (SD.begin(SD_CS)) {
-      Serial.println("SD ready");
-      loadContactsFromSD();
-      break;
-    }
-    Serial.println("SD init failed, retrying...");
-    delay(500);
-  }
-  if (!SD.exists("contacts.csv")) {
-    File f = SD.open("contacts.csv", FILE_WRITE);
-    if (f) {
-      f.println("Charlie|+14156100909");
-      f.println("Dad|+14156522835");
-      f.println("Oliver|+14156100910");
-      f.close();
-      Serial.println("contacts.csv created");
-    } else {
-      Serial.println("Failed to create contacts.csv");
-    }
-  }
-  if (!SD.exists("messages.csv")) {
-
-
-  // Reset touch controller
+  // ── Touch controller reset ────────────────────────────
   pinMode(CTP_RST, OUTPUT);
-  digitalWrite(CTP_RST, LOW);
-  delay(10);
-  digitalWrite(CTP_RST, HIGH);
-  delay(50);
+  digitalWrite(CTP_RST, LOW);  delay(10);
+  digitalWrite(CTP_RST, HIGH); delay(50);
   Wire.begin();
 
+  // ── TFT FIRST ─────────────────────────────────────────
   tft.begin();
   tft.setRotation(ROTATION);
   tft.fillScreen(ILI9341_RED);
   tft.invertDisplay(true);
 
+  // ── SD AFTER TFT ──────────────────────────────────────
+  // TFT_CS is HIGH so SPI bus is free for SD
+  int retries = 3;
+  while (retries--) {
+    if (SD.begin(SD_CS)) {
+      Serial.println("SD ready");
+      loadContactsFromSD();
+      loadMessagesFromSD();
+      break;
+    }
+    Serial.println("SD init failed, retrying...");
+    delay(500);
+  }
 
+  if (!SD.exists("contacts.csv")) {
+    File f = SD.open("contacts.csv", FILE_WRITE);
+    if (f) { f.close(); }
+  }
 
+  if (!SD.exists("msg")) {
+    SD.mkdir("msg");
+    Serial.println("msg directory created");
+  }
 
-
+  // ── Cellular ──────────────────────────────────────────
   bool connected = false;
   while (!connected) {
-    if (nbAccess.begin("") == NB_READY) {  // Does unsigned long baud = 115200; SerialSARA.begin(baud); internally
-
+    if (nbAccess.begin("") == NB_READY) {
       connected = true;
       tft.fillScreen(ILI9341_BLACK);
-
-      // PSM low power modem
-      // nbAcess begin also activates modem begin
-      // CPSMS -> Power Saving Mode Settings:
-      /*
-        The command controls whether the UE wants to apply PSM or not, as well as:
-        • the requested extended periodic RAU value in GERAN/UTRAN : 2g/3g legacy
-        • the requested GPRS READY timer value in GERAN/UTRAN : 2g/3g legacy
-        • the requested extended periodic TAU value in E-UTRAN : How long to sleep 
-        * (Tracking time update)
-          the requested Active Time value : How long to stay awak after activity 
-                  modem.send("AT+CPSMS=1,,,\"00000001\",\"00001010\"");
-//                           TAU=10min   Active=20sec
-        String response = modem.receive(1000);  // Waits a 1000 ms to receive a string from the modem
-        Serial.println(response);
-  */
-      // SerialSARA.println("AT+CPSMS=0");
-      // SerialSARA.println("AT+CPSMS=1,,,\"00000001\",\"00001010\"");
-
     } else {
       tft.fillScreen(ILI9341_BLACK);
       tft.println("Not connected");
@@ -343,7 +322,7 @@ void setup() {
     }
   }
 }
-}
+
 
 // ── Loop ──────────────────────────────────────────────────────────
 
@@ -460,7 +439,7 @@ void loop() {
 
     case UI_CONVO:
       {
-        drawConversationToTFT(displayConvo);
+        drawConversationToTFT(displayConvo, sp, justPressed);
 
         if (justPressed && convoBackBtnPressed(sp)) {
           conversationReset();

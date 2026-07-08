@@ -49,4 +49,19 @@ bool Button::isClicked(const ScreenPoint& sp) {
   return (sp.x >= x && sp.x <= (x + width) && sp.y >= y && sp.y <= (y + height));
 }
 
+void msgButton::render() {
+    uint16_t bubbleColor = (dir == OUT) 
+        ? tft.color565(0, 122, 255)   // iOS blue for outgoing
+        : tft.color565(60, 60, 60);   // grey for incoming
+
+    tft.fillRoundRect(x, y, width, height, 8, bubbleColor);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.setTextSize(1);
+    tft.setCursor(x + 6, y + 6);
+    tft.print(text);
+}
+
+
+
+
 

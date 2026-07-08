@@ -151,6 +151,27 @@ void updateBattery() {
     tft.print("V");
 }
 
+bool getCurrentTimestamp(char* output, int outLen) {
+    char raw[64];
+    int i = 0;
+
+    SerialSARA.println("AT+CCLK?");
+    delay(300);
+    while (SerialSARA.available() && i < 63) {
+        raw[i++] = (char)SerialSARA.read();
+    }
+    raw[i] = '\0';
+
+    if (strstr(raw, "+CCLK:") == NULL) return false;  // no valid time
+
+    char* ts = strchr(raw, '"');
+    if (!ts) return false;
+    ts++;  // skip opening quote → "26/06/30,22:03:51-28"
+
+    formatTimestamp(ts, output, outLen);
+    return true;
+}
+
 void formatTimestamp(const char* raw, char* output, int outLen) {
     // raw = "26/06/30,22:03:51-28"
     //        0123456789012345678901

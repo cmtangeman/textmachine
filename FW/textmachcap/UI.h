@@ -19,4 +19,9 @@ void updateBattery();
 
 void formatTimestamp(const char* raw, char* output, int outLen);
 
+// Queries the modem's clock (AT+CCLK?) and formats it the same way formatTimestamp()
+// does for received messages. Returns false (output untouched) if the modem didn't
+// return a usable time.
+bool getCurrentTimestamp(char* output, int outLen);
+
 #endif

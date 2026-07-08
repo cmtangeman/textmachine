@@ -47,11 +47,17 @@ struct MessageThread {
 // Helper
 void normalizePhoneNumber(const char* input, char* output, int outLen);
 
+// Returns the number of word-wrapped lines `body` takes up when rendered at maxWidth
+// pixels (using the TFT's current font/size) — used to size a msgButton's height.
+int measureMessageLines(const char* body, int maxWidth);
+
 
 // Storage
 void pushMessage(const char* phone, const char* text, MsgDir dir, const char* time);
 
 void saveMessageToSD(const char* phone, Msg& msg);
+
+void loadMessagesFromSD();
 
 // Recent messages UI
 int  recentMessagesScreen(const ScreenPoint& sp, bool justPressed);
@@ -59,7 +65,7 @@ bool msgBackBtnPressed(const ScreenPoint& sp);
 void recentMessagesReset();
 
 // Conversation UI
-bool drawConversationToTFT(int selection);
+bool drawConversationToTFT(int selection,const ScreenPoint& sp, bool justPressed);
 bool convoBackBtnPressed(const ScreenPoint& sp);
 void conversationReset();
 
