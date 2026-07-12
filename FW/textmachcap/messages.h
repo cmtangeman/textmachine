@@ -10,7 +10,7 @@
 // -------------------------------------------------------------------------------------------------
 
 #define MAX_CONVERSATIONS       10
-#define MAX_MESSAGES_PER_CONVO  10
+#define MAX_MESSAGES_PER_CONVO  15
 #define MAX_PHONE_LEN           20
 #define MAX_BODY_LEN            60
 #define MAX_TIMESTAMP_LEN 20
@@ -65,6 +65,8 @@ int measureMessageLines(const char* body, int maxWidth);
 void pushMessage(const char* phone, const char* text, MsgDir dir, const char* time);
 
 void saveMessageToSD(const char* phone, Msg& msg);
+
+void unsaveMessageFromSD(const char* phone, int msgIdx);
 
 void loadMessagesFromSD();
 

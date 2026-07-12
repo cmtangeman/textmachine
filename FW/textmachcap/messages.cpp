@@ -271,12 +271,69 @@ void loadMessagesFromSD() {
                 copyBounded(t.messages[t.lastMessageIndex].timestamp, tsBuf,   MAX_TIMESTAMP_LEN);
                 t.messages[t.lastMessageIndex].dir   = dir;
                 t.messages[t.lastMessageIndex].saved = true;  // ← already on SD, don't resave
+                t.messages[t.lastMessageIndex].kept = true;
             }
         }
         entry.close();
     }
     dir.close();
     Serial.println("Messages loaded from SD");
+}
+
+void unsaveMessageFromSD(const char* phone, int msgIdx) {
+    char filename[40];
+    char normalized[MAX_PHONE_LEN];
+    normalizePhoneNumber(phone, normalized, MAX_PHONE_LEN);
+
+    const char* digits = normalized + 1;
+    int digitsLen = strlen(digits);
+    const char* shortName = (digitsLen > 8) ? digits + (digitsLen - 8) : digits;
+    snprintf(filename, sizeof(filename), "/msg/%s.csv", shortName);
+
+    // ── Read all lines from file ───────────────────────────
+    String lines[MAX_MESSAGES_PER_CONVO];
+    int lineCount = 0;
+
+    File f = SD.open(filename, FILE_READ);
+    if (!f) {
+        Serial.println("unsave: file not found");
+        return;
+    }
+
+    while (f.available() && lineCount < MAX_MESSAGES_PER_CONVO) {
+        String line = f.readStringUntil('\n');
+        line.trim();
+        if (line.length() > 0) {
+            lines[lineCount++] = line;
+        }
+    }
+    f.close();
+
+    // ── Find which line corresponds to msgIdx ──────────────
+    // lines are in chronological order, msgIdx maps directly
+    if (msgIdx < 0 || msgIdx >= lineCount) {
+        Serial.println("unsave: invalid index");
+        return;
+    }
+
+    // ── Rewrite file skipping that line ───────────────────
+    SD.remove(filename);
+    File out = SD.open(filename, FILE_WRITE);
+    if (!out) {
+        Serial.println("unsave: failed to rewrite file");
+        return;
+    }
+
+    for (int i = 0; i < lineCount; i++) {
+        if (i == msgIdx) continue;  // skip the unsaved message
+        out.println(lines[i]);
+    }
+    out.close();
+
+    Serial.print("Unsaved message ");
+    Serial.print(msgIdx);
+    Serial.print(" from ");
+    Serial.println(filename);
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -467,15 +524,27 @@ bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPresse
 
   // ── Tap a bubble to toggle its "kept" indicator ──
   for (int i = convoVisibleTop; i <= convoVisibleBottom; i++) {
+
     if (convoMsgBtns[i].isClicked(sp)) {
-      t.messages[i].kept = !t.messages[i].kept;
-      conversationDrawn = false;  // redraw so the indicator updates
-      return true;
+        t.messages[i].kept = !t.messages[i].kept;
+        
+        if (t.messages[i].kept) {
+            saveMessageToSD(t.phoneNumber, t.messages[i]);  // ← fixed index
+        } else {
+            unsaveMessageFromSD(t.phoneNumber, i);
+            t.messages[i].saved = false;
+        }
+        
+        conversationDrawn = false;
+        return true;
     }
+    
   }
 
   return true;
 }
+
+
 
 // -------------------------------------------------------------------------------------------------
 // Storage helpers
@@ -546,7 +615,7 @@ void pushMessage(const char* phone, const char* text, MsgDir dir, const char* ti
 
     // copy message into a file of a specific phone number with all msgs in conversation
 
-    saveMessageToSD(phone, t.messages[t.lastMessageIndex]);
+    // saveMessageToSD(phone, t.messages[t.lastMessageIndex]);
 
   } else {
     // TODO

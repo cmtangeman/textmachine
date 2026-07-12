@@ -29,7 +29,7 @@ static Button backBtn;
   }
 
 void Button::render() {
-  tft.fillRect(x, y, width, height, color);
+  tft.fillRect(x, y, width, height, ILI9341_BLACK); // COLOR
 
   tft.setFont(&FreeSans9pt7b);   // use GFX font
   tft.setTextSize(1);            // must stay 1 for GFX fonts
@@ -66,7 +66,7 @@ void msgButton::render() {
         ? tft.color565(0, 122, 255)   // iOS blue for outgoing
         : tft.color565(60, 60, 60);   // grey for incoming
 
-    tft.fillRoundRect(x, y, width, height, 8, bubbleColor);
+    tft.fillRoundRect(x, y, width, height, 8, bubbleColor); //
     tft.setTextColor(ILI9341_WHITE);
     tft.setTextSize(1);
 
