@@ -37,12 +37,14 @@ struct Msg {
   MsgDir dir;
   bool saved;  // already written to SD — distinct from `kept` below
   bool kept;   // user tapped this message to keep it (Snapchat-style keep indicator)
+  bool read; 
 };
 
 struct MessageThread {
   char phoneNumber[MAX_PHONE_LEN];
   Msg messages[MAX_MESSAGES_PER_CONVO]; // Instantiation of Msg/
   int lastMessageIndex;
+  bool readThread;
 };
 
 
@@ -59,6 +61,10 @@ int wrapMessageText(const char* body, int maxWidth, char outLines[][MAX_BODY_LEN
 // Returns the number of word-wrapped lines `body` takes up when rendered at maxWidth
 // pixels (using the TFT's current font/size) — used to size a msgButton's height.
 int measureMessageLines(const char* body, int maxWidth);
+
+// notifications 
+
+static bool unreadMessage();
 
 
 // Storage

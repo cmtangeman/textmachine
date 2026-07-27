@@ -53,7 +53,7 @@ static char newContactPhone[MAX_PHONE_LEN];
 
 #define SD_CS 3
 
-#define ROTATION 0
+#define ROTATION 2
 
 // ── Peripherals ───────────────────────────────────────────────────
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
@@ -89,19 +89,37 @@ bool ctpRead(ScreenPoint& sp) {
   Wire.beginTransmission(FT6336U_ADDR);
   Wire.write(FT_REG_NUMTOUCHES);
   Wire.endTransmission(false);
-  Wire.requestFrom(FT6336U_ADDR, 5);  // Request 5 bytes from 0x38
+  Wire.requestFrom(FT6336U_ADDR, 5);
 
-  if (Wire.available() < 5) return false;  // Malfunction
+  if (Wire.available() < 5) return false;
 
-  uint8_t touches = Wire.read();  //
+  uint8_t touches = Wire.read();
   if (touches == 0 || touches > 2) return false;
-  // & -> bitwise AND 0's out the top nibble and keeps all 1's from bottom niblle ( onlu the bottom nibble contains screen position, top is flags etc.)
-  uint16_t x = ((Wire.read() & 0x0F) << 8) | Wire.read();  // Masks upper nibble of byte and then uses bitwise OR to combine
+
+  uint16_t x = ((Wire.read() & 0x0F) << 8) | Wire.read();
   uint16_t y = ((Wire.read() & 0x0F) << 8) | Wire.read();
+
+  // Remap raw touch coords to match current display rotation.
+  // FT6336U always reports in native (rotation 0) panel space.
+#if ROTATION == 2
+  x = 240 - 1 - x;   // ILI9341 native width
+  y = 320 - 1 - y;   // ILI9341 native height
+#elif ROTATION == 1
+  uint16_t tmp = x;
+  x = y;
+  y = 240 - 1 - tmp;
+#elif ROTATION == 3
+  uint16_t tmp = x;
+  x = 320 - 1 - y;
+  y = tmp;
+#endif
+  // ROTATION == 0 needs no remap
 
   sp = ScreenPoint((int16_t)x, (int16_t)y);
   return true;
 }
+
+
 
 // ── NB / SMS helpers ──────────────────────────────────────────────
 
@@ -113,11 +131,11 @@ bool ctpRead(ScreenPoint& sp) {
 
 void receive() {
     SerialSARA.println("AT+CMGF=1");
-    delay(200);
+    
     while (SerialSARA.available()) SerialSARA.read(); // Wait until ready 
 
     SerialSARA.println("AT+CMGL=\"REC UNREAD\"");
-    delay(1000);
+    
 
     //Read entire response first 
     String fullResponse = "";
@@ -345,7 +363,11 @@ void loop() {
     tft.setRotation(ROTATION);
 
     // (int xPos, int yPos, int butWidth, int butHeight, const char* butText, uint16_t butColor)
+    if(unreadMessage){
+    msgBtn.initButton(0, 60, 240, 40, "Messages",ILI9341_RED);
+    }else{
     msgBtn.initButton(0, 60, 240, 40, "Messages");
+    }
     compBtn.initButton(0, 110, 240, 40, "Compose");
     refreshBtn.initButton(0, 160, 240, 40, "Refresh");
     contactsBtn.initButton(0, 210, 240, 40, "Contacts");
@@ -360,6 +382,10 @@ void loop() {
 
     menuDrawn = true;
   }
+
+  // If there is a notification on any of the chats, add a blue iOS style circle over the messages rectangle!
+
+
 
   // Check signal first
 
@@ -392,6 +418,8 @@ void loop() {
           keyboardReset();
           return;
         }
+        
+        
         if (justPressed && refreshBtn.isClicked(sp)) {
           tft.fillScreen(ILI9341_BLACK);
           tft.setCursor(0, 0);
@@ -401,6 +429,8 @@ void loop() {
           menuDrawn = false;
           return;
         }
+        
+
         if (justPressed && contactsBtn.isClicked(sp)) {
           // tft.fillScreen(ILI9341_ORANGE);
           tft.setCursor(0, 0);

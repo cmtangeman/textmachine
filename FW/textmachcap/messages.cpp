@@ -46,6 +46,7 @@ static int  findThreadByPhone(const char* phone);
 static void moveThreadToTop(int idx);
 static void copyBounded(char* dst, const char* src, size_t dstSize);
 
+
 // -------------------------------------------------------------------------------------------------
 // Phone normalization helper
 // -------------------------------------------------------------------------------------------------
@@ -560,6 +561,15 @@ static int findThreadByPhone(const char* phone) {
   return -1; // No convo thread available, find a new one! 
 }
 
+static bool unreadMessage() {
+  for (int i = 0; i <= threadTop; i++) {
+    if (threads[i].readThread){
+      return true;;
+    }
+  }
+  return false;; // No convo thread available, find a new one! 
+}
+
 static void moveThreadToTop(int idx) {
   if (idx == threadTop) return;  // already most recent
 
@@ -595,11 +605,18 @@ void pushMessage(const char* phone, const char* text, MsgDir dir, const char* ti
 
     copyBounded(threads[idx].phoneNumber, phone, MAX_PHONE_LEN);  // Assign the phone number to that thread
     threads[idx].lastMessageIndex = -1; // Now thread exists but no messages stored yet
+    
     // threads[idx].lastMsgTimestamp = time;  
      
   }
 
+  // ELSE
+
   MessageThread& t = threads[idx];  // reference t for shortcut
+
+  // Since we have just received a message auto set message not being read yet 
+  
+  t.readThread = false;
 
   // For new / old thread/ If the conversation is not full, append new message
   if (t.lastMessageIndex + 1 < MAX_MESSAGES_PER_CONVO) {
@@ -610,6 +627,11 @@ void pushMessage(const char* phone, const char* text, MsgDir dir, const char* ti
     copyBounded(t.messages[t.lastMessageIndex].body, text, MAX_BODY_LEN);
     copyBounded(threads[idx].messages[t.lastMessageIndex].timestamp, time, MAX_TIMESTAMP_LEN);
     t.messages[t.lastMessageIndex].dir = dir;
+
+    // Also set the message as being read to state false
+    // This is neccesary because unread messages will be automatically saved to prevent persons from losing 
+    // messages they havent even seen yet. 
+    t.messages[t.lastMessageIndex].read = false;
 
   
 
@@ -625,3 +647,4 @@ void pushMessage(const char* phone, const char* text, MsgDir dir, const char* ti
   moveThreadToTop(idx);
 
 }
+
