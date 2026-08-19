@@ -111,11 +111,13 @@ void saveContactToSD(const char* name, const char* phone) {
 void loadContactsFromSD() {
     File f = SD.open("contacts.csv", FILE_READ);
     if (!f) {
-        Serial.println("No contacts.csv found");
+        Serial.println("Failed to open contacts.csv, reinitializing SD");
+        SD.begin(3);
+    
         return;
     }
 
-    contactCount = 0;
+   //  contactCount = 0;
     while (f.available() && contactCount < MAX_CONTACTS) {
         String line = f.readStringUntil('\n');
         int sep = line.indexOf('|');
