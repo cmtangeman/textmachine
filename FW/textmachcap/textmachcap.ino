@@ -26,6 +26,7 @@
 #include "keyboard.h"
 #include "contacts.h"
 #include "UI.h"
+#include "splash_logo.h"
 
 // ── Pin definitions ───────────────────────────────────────────────
 #define TFT_DC 7
@@ -53,14 +54,7 @@ static char newContactPhone[MAX_PHONE_LEN];
 
 #define SD_CS 3
 
-//FOR SCREEN SLEEP TIME. 
 
-#define LED_SCREEN 2
-
-#define SCREEN_SLEEP_TIMEOUT 30000UL  // 30s
-
-unsigned long lastTouchTime = 0;
-bool screenAsleep = false;
 
 
 #define ROTATION 2
@@ -80,8 +74,6 @@ static char recipientNumber[MAX_PHONE_LEN];
 static char msgBody[MAX_BODY_LEN];
 
 
-
-
 unsigned long lastCSQUpdate = 0;
 unsigned long lastClockUpdate = 0;
 
@@ -91,6 +83,38 @@ unsigned long lastClockUpdate = 0;
 NB nbAccess;
 NB_SMS sms;
 //NBModem modem;
+
+
+// LOW POWER MODE STUFF 
+
+#include <ArduinoLowPower.h>
+
+
+#define PWR_ON_PULSE_MS 250 // stay well inside the 150-3200ms window, away from the power-off overlap zone
+
+//FOR TOUCH SLEEP TIME. 
+#define SLEEP_PIN    1   // HIGH = sleep, LOW = wake
+
+
+#define FT_REG_POWER_MODE  0xA5
+#define FT_POWER_ACTIVE    0x00
+#define FT_POWER_MONITOR   0x01  // low power, still detects touch
+#define FT_POWER_HIBERNATE 0x03  // full sleep
+
+//FOR SCREEN SLEEP TIME. 
+
+#define LED_SCREEN 2
+
+#define SCREEN_SLEEP_TIMEOUT 30000UL  // 30s
+
+unsigned long lastTouchTime = 0;
+bool screenAsleep = false;
+
+// Hoisted out of loop() so exitAndReset() can clear stale debounce state
+// left over from the instant sleep was entered.
+bool wasTouched = false;
+
+#define CTP_WAKE_TIMEOUT_MS 300
 
 // ── Touch ─────────────────────────────────────────────────────────
 // FT6336U outputs pixel coordinates directly — no calibration needed.
@@ -157,6 +181,8 @@ String readModemResponse(unsigned long timeout_ms = 2000) {
 
 
 void receive() {
+
+   // modemWake();
 
     // Is this a waste?
     SerialSARA.println("AT+CMGF=1");
@@ -261,11 +287,14 @@ void receive() {
         tft.setCursor(0, 0);
         tft.println("No new messages");
     }
-    delay(500);
+    //modemSleep();
+    //delay(500);
 }
 
 
 void text(const char* remoteNum, const char* message) {
+
+  // modemWake();
   tft.fillScreen(ILI9341_BLACK);
   tft.setCursor(0, 0);
 
@@ -286,6 +315,7 @@ void text(const char* remoteNum, const char* message) {
   } else {
     tft.println("Failed.");
   }
+  // modemSleep();
   delay(1000);
 }
 
@@ -302,6 +332,16 @@ enum UiState { UI_MENU,
 
 
 UiState currentState = UI_MENU;
+
+// ── Splash ────────────────────────────────────────────────────────
+
+void drawSplashScreen() {
+  tft.setRotation(ROTATION);
+  tft.fillScreen(ILI9341_WHITE);  // physically renders BLACK — see splash_logo.h
+  int16_t x = (240 - SPLASH_LOGO_W) / 2;
+  int16_t y = (320 - SPLASH_LOGO_H) / 2;
+  tft.drawBitmap(x, y, splash_logo_bits, SPLASH_LOGO_W, SPLASH_LOGO_H, ILI9341_BLACK);
+}
 
 // ── Setup ─────────────────────────────────────────────────────────
 
@@ -329,9 +369,8 @@ void setup() {
   lastTouchTime = millis();
 
   tft.begin();
-  tft.setRotation(ROTATION);
-  tft.fillScreen(ILI9341_RED);
   tft.invertDisplay(true);
+  drawSplashScreen();  // stays up through SD + cellular init, until the menu draws
 
 // ── SD AFTER TFT ──────────────────────────────────────
   bool sdReady = false;
@@ -376,7 +415,6 @@ void setup() {
   while (!connected) {
     if (nbAccess.begin("") == NB_READY) {
       connected = true;
-      tft.fillScreen(ILI9341_BLACK);
     } else {
       tft.fillScreen(ILI9341_BLACK);
       tft.println("Not connected");
@@ -384,6 +422,11 @@ void setup() {
       delay(1000);
     }
   }
+
+   // modemSleep();   // registered — now let it default to power-saving from here on
+
+  pinMode(SLEEP_PIN, INPUT_PULLDOWN);  // Bring the pin down to 0 from ambiguos mode 
+
 }
 
 
@@ -393,13 +436,26 @@ void loop() {
 
   unsigned long now = millis();
 
- 
+  // Serial.print("SLEEP_PIN: ");
+  // Serial.println(digitalRead(SLEEP_PIN));
+  
+  // Pin 1 sleep control 
+
+    static bool wasSleeping = false;
+    bool sleeping = digitalRead(SLEEP_PIN) == HIGH;
+
+    if (sleeping && !wasSleeping) {
+        enterSleep();
+        wasSleeping = true;
+    } else if (!sleeping && wasSleeping) {
+        exitAndReset();
+        wasSleeping = false;
+    }
+
+    if (sleeping) return;
 
   static Button msgBtn, compBtn, refreshBtn, contactsBtn, backBtn, debugBtn;
   static bool isDrawnConvo = false;
-
-
-
 
   if (!menuDrawn) {
     tft.setTextColor(ILI9341_WHITE);
@@ -442,26 +498,27 @@ void loop() {
     touched = true;
   }
 
-  static bool wasTouched = false;
+
   bool justPressed = touched && !wasTouched;
   wasTouched = touched;
 
+/*
     // ── Screen sleep/wake handling ─────────────────────────────
     if (touched) {
       lastTouchTime = now;
     }
 
     if (!screenAsleep && (now - lastTouchTime >= SCREEN_SLEEP_TIMEOUT)) {
-      screenSleep();
+      // screenSleep(); Using analog switch for this currently 
     }
 
     if (screenAsleep) {
       if (touched) {
-        screenWake();
+        // screenWake(); -> for now relying on analog switch to determine screen/touch sleep mode. 
       }
       return;   // swallow this loop's touch — don't let it fall through to the state machine
     }
-
+*/ 
 
   switch (currentState) {
 
@@ -764,4 +821,104 @@ void screenWake(){
   digitalWrite(LED_SCREEN, HIGH);
   screenAsleep = false;
   lastTouchTime = millis();
+}
+
+void ctpSleep() {
+    digitalWrite(CTP_RST, LOW);  // hold in reset = disabled
+}
+void ctpReset() {
+    digitalWrite(CTP_RST, LOW);
+    delay(5);
+    digitalWrite(CTP_RST, HIGH);
+    delay(50);
+
+}
+
+
+void setBacklight(uint8_t brightness) {
+    analogWrite(LED_SCREEN, brightness);
+}
+
+
+bool modemAwake() {
+  while (SerialSARA.available()) SerialSARA.read();
+  SerialSARA.println("AT");
+  String resp = readModemResponse(1000);
+  return resp.indexOf("OK") != -1;
+}
+
+
+
+void sdSleep() {
+    SD.end();                    // releases SPI bus
+    pinMode(SD_CS, OUTPUT);
+    digitalWrite(SD_CS, HIGH);  // deselect
+}
+
+void sdWake() {
+    SD.begin(SD_CS);             // reinitialize
+}
+
+
+void modemSleep(){
+  SerialSARA.println("AT+CPSMS=1");
+  readModemResponse(1000);   // consume the OK so it doesn't sit in the buffer for next time
+}
+
+void modemWake() {
+  if (modemAwake()) {
+    Serial.println("Modem already responsive.");
+    return;
+  }
+
+  Serial.println("No response — pulsing PWR_ON.");
+  digitalWrite(SARA_PWR_ON, HIGH);
+  delay(PWR_ON_PULSE_MS);
+  digitalWrite(SARA_PWR_ON, LOW);
+  delay(500);
+
+  if (modemAwake()) {
+    Serial.println("Modem woke via PWR_ON.");
+    SerialSARA.println("AT+CPSMS=0");
+    readModemResponse(1000);
+  } else {
+    Serial.println("Modem still unresponsive after PWR_ON pulse.");
+    // Per forum guidance: don't drive RESETN as a fallback here — risk outweighs benefit.
+    // If this fires, it's worth surfacing to the UI as a real error state rather than retrying blindly.
+  }
+}
+
+
+void exitAndReset() {
+    //sdWake();
+    
+    SPI.begin();    // SPI bus lost clock during standby
+    Wire.begin();   // I2C same
+    
+    //sdWake();       // SD needs SPI working first
+    ctpReset();     // touch needs I2C working first
+    delay(100);
+    screenWake();   // backlight on
+
+    
+    // reset millis() based timers since they stopped during sleep
+    lastTouchTime   = millis();
+    lastCSQUpdate   = millis();
+    lastClockUpdate = millis();
+    
+}
+
+void enterSleep() {
+    screenSleep();
+    ctpSleep();
+    //sdSleep();
+    
+    // attach interrupt to SLEEP_PIN — wake when it goes LOW
+    LowPower.attachInterruptWakeup(SLEEP_PIN, exitAndReset, FALLING);
+    
+    // put CPU into standby — ~2μA
+    LowPower.deepSleep();
+    
+    
+    // execution resumes here after wake
 }
