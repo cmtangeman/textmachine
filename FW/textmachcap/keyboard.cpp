@@ -554,7 +554,13 @@ void keyboardReset(void) {
   msgOrNumber = false;
   alphaMode   = false;
   capsLock    = false;
-  
+
+}
+
+// Forces the next keyboardTick() to fully repaint (e.g. after GRAM was lost
+// to a screen power cycle) without touching whatever the user has typed.
+void keyboardForceRedraw(void) {
+  kbDrawn = false;
 }
 
 void debugPrint(const char* cmd, const char* response) {

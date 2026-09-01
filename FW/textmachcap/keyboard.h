@@ -6,6 +6,7 @@ struct ScreenPoint;
 bool keyboardTick(const ScreenPoint& sp, bool justTouched, int mode);
 const char* keyboardGetText(void);
 void keyboardReset(void);
+void keyboardForceRedraw(void);
 void keyboardClearText(void);
 void keyboardSwitchToMessageField(const char* keepInToField);
 static void drawKeyboard(void);

@@ -161,7 +161,7 @@ bool ctpRead(ScreenPoint& sp) {
 // Correct U.S not using +1 or 1 and otherwise treat as EUROPEAN number with correct country code
 // Ignore + input for all and concatenate to first digit for all as well.
 
-String readModemResponse(unsigned long timeout_ms = 2000) {
+String readModemResponse(unsigned long timeout_ms = 2000) { // default is 2 seconds remember millis is the inner clock
     String resp = "";
     unsigned long start = millis();
     unsigned long lastByte = millis();
@@ -176,6 +176,7 @@ String readModemResponse(unsigned long timeout_ms = 2000) {
             break;
         }
     }
+    Serial.println(resp);
     return resp;
 }
 
@@ -184,11 +185,10 @@ void receive() {
 
    // modemWake();
 
-    // Is this a waste?
-    SerialSARA.println("AT+CMGF=1");
-    readModemResponse(1000); // wait for and consume terminating OK
-
-
+    // FIX: removed the "AT+CMGF=1" resend here — text mode is a persistent
+    // modem setting already established once in modemConfigure() at boot;
+    // nothing in this codebase switches it back to PDU mode, so resending
+    // it on every Refresh tap was a redundant round trip.
     SerialSARA.println("AT+CMGL=\"ALL\"");
     
 
@@ -352,23 +352,26 @@ void setup() {
 
   // ── Pin setup ─────────────────────────────────────────
   pinMode(TFT_CS, OUTPUT);
-  digitalWrite(TFT_CS, HIGH);
+  digitalWrite(TFT_CS, HIGH); // Stop listening
   pinMode(SD_CS, OUTPUT);
-  digitalWrite(SD_CS, HIGH);
+  digitalWrite(SD_CS, HIGH);    // Stop listening
 
   // ── Touch controller reset ────────────────────────────
   pinMode(CTP_RST, OUTPUT);
   digitalWrite(CTP_RST, LOW);  delay(10);
   digitalWrite(CTP_RST, HIGH); delay(50);
   Wire.begin();
+  // NOTE: CTP_INT-gated polling was tried and reverted (see loop()) — it
+  // caused ghost repeat touches, likely because this FT6336U runs in
+  // trigger mode rather than level/polling mode. CTP_INT stays unused.
 
   // ── TFT FIRST ─────────────────────────────────────────
   // Turn screen on
-  pinMode(LED_SCREEN, OUTPUT);
+  pinMode(LED_SCREEN, OUTPUT);  
   digitalWrite(LED_SCREEN, HIGH);
   lastTouchTime = millis();
 
-  tft.begin();
+  tft.begin();  // -> Internal start listening TFT_CS = LOW and pulls it high once done. 
   tft.invertDisplay(true);
   drawSplashScreen();  // stays up through SD + cellular init, until the menu draws
 
@@ -423,10 +426,43 @@ void setup() {
     }
   }
 
+  modemConfigure();
+
    // modemSleep();   // registered — now let it default to power-saving from here on
 
   pinMode(SLEEP_PIN, INPUT_PULLDOWN);  // Bring the pin down to 0 from ambiguos mode 
 
+}
+
+void modemConfigure() {
+    SerialSARA.println("AT+UPSV=4");        // UART always on, modem can idle
+    readModemResponse(500);
+    
+    /*
+    SerialSARA.println("AT+CPSMS=0");       // disable PSM
+    readModemResponse(500);
+    
+    SerialSARA.println("AT+CEDRXS=1,4,\"0101\"");  // enable eDRX 81 sec
+    readModemResponse(500);
+    
+    SerialSARA.println("AT+CMGF=1");        // text mode
+    readModemResponse(500);
+    
+    SerialSARA.println("AT+CPMS=\"SM\",\"SM\",\"SM\"");  // SIM memory
+    readModemResponse(500);
+    
+    SerialSARA.println("AT+CMGD=1,1");      // clear stale read messages
+    readModemResponse(500);
+
+    // FIX: removed "AT+CEDRXS?" — it only echoes back the request you just
+    // sent above, which you already know. AT+CEDRXRDP below is the one
+    // that's actually useful, since it reports what the network granted.
+    SerialSARA.println("AT+CEDRXRDP");
+    readModemResponse(500);
+    */
+
+
+    Serial.println("Modem configured");
 }
 
 
@@ -477,9 +513,11 @@ void loop() {
 
     // Update the time and the power
 
+/*
     updateClock();
     updateCSQ();
     updateBattery();
+*/
 
     menuDrawn = true;
   }
@@ -494,6 +532,13 @@ void loop() {
   bool touched = false;
   ScreenPoint sp;
 
+  // REVERTED: gating this read on CTP_INT's level caused repeated/ghost
+  // key presses (a single tap registering as "aaa"). This FT6336U appears
+  // to run in trigger mode — CTP_INT pulses low once per new report rather
+  // than staying asserted for the whole touch — so gating on level made
+  // `touched` flicker false mid-touch, and the debounce logic below read
+  // that as release-then-press repeatedly. Back to unconditional polling,
+  // which is the version that was actually reliable.
   if (ctpRead(sp)) {
     touched = true;
   }
@@ -807,46 +852,49 @@ case UI_DEBUG: {
 
 
 
-  // Turn off the backlight and ILI9341 after 20s of inactivity.
-  // Keep FT6636U running so that it can wake up after being pressed
-  // Eventually an analog button might be the next step in making it so we dont need to keep the FT6636U enabled. 
+  // The TFT, FT6336U touch controller, and SD card all live on one board
+  // sharing a single Vcc rail — the eventual plan is to gate that rail with
+  // a MOSFET. These four sleep/wake pairs are written as if Vcc really is
+  // cut on every sleep: each "sleep" sends its IC to its lowest defined
+  // state and releases the SAMD21-side bus so nothing is mid-transaction
+  // when power drops, and each "wake" re-runs a full cold-boot init rather
+  // than a light resume, since a real Vcc cut would wipe every register,
+  // GRAM, and card-init state on the board. SAMD21 RAM/app state persists
+  // across this (it's never depowered), which is what lets us redraw
+  // whatever screen was on-screen instead of resetting to the menu.
+  
 void screenSleep(){
   if (screenAsleep) return;
+  tft.sendCommand(0x10);       // SLPIN — panel + driver IC to sleep
+  delay(5);                    // ILI9341 needs >=5ms before another command
   digitalWrite(LED_SCREEN, LOW);
+  digitalWrite(TFT_CS, HIGH);  // deasserted, matches SD_CS below
   screenAsleep = true;
 }
 
 void screenWake(){
   if (!screenAsleep) return;
-  digitalWrite(LED_SCREEN, HIGH);
+  tft.begin();                 // full cold re-init — registers/GRAM are gone
+  tft.setRotation(ROTATION);
+  tft.invertDisplay(true);
   screenAsleep = false;
   lastTouchTime = millis();
+  // backlight is enabled by exitAndReset() only after real content is
+  // redrawn, so the panel never flashes a frame of garbage GRAM
 }
 
 void ctpSleep() {
     digitalWrite(CTP_RST, LOW);  // hold in reset = disabled
-}
+    Wire.end();                  // release the SAMD21 side of the I2C bus too
+}                                 // FIX: this brace was missing — ctpReset() was
+                                  // nested inside ctpSleep(), which doesn't compile
 void ctpReset() {
+    Wire.begin();
     digitalWrite(CTP_RST, LOW);
     delay(5);
     digitalWrite(CTP_RST, HIGH);
     delay(50);
-
 }
-
-
-void setBacklight(uint8_t brightness) {
-    analogWrite(LED_SCREEN, brightness);
-}
-
-
-bool modemAwake() {
-  while (SerialSARA.available()) SerialSARA.read();
-  SerialSARA.println("AT");
-  String resp = readModemResponse(1000);
-  return resp.indexOf("OK") != -1;
-}
-
 
 
 void sdSleep() {
@@ -856,69 +904,118 @@ void sdSleep() {
 }
 
 void sdWake() {
-    SD.begin(SD_CS);             // reinitialize
+    SD.begin(SD_CS);             // full re-init — card was fully unpowered
 }
 
-
-void modemSleep(){
-  SerialSARA.println("AT+CPSMS=1");
-  readModemResponse(1000);   // consume the OK so it doesn't sit in the buffer for next time
+// Forces whatever's on currentState to fully repaint next pass, since a
+// real Vcc cut wipes GRAM. Uses each screen's existing "*Drawn = false"
+// reset function rather than inventing a new redraw path. keyboardReset()
+// is deliberately avoided for the compose/add-contact states — it would
+// also wipe whatever the user had typed, which we don't want after a
+// transient screen power cycle.
+void redrawCurrentScreen() {
+    switch (currentState) {
+        case UI_MENU:
+            menuDrawn = false;
+            break;
+        case UI_MESSAGES:
+            recentMessagesReset();
+            break;
+        case UI_CONVO:
+            conversationReset();
+            break;
+        case UI_CONTACTS:
+            contactsScreenReset();
+            break;
+        case UI_COMPOSE:
+        case UI_ADD_CONTACT:
+            keyboardForceRedraw();
+            break;
+        default:
+            break;
+    }
 }
 
-void modemWake() {
-  if (modemAwake()) {
-    Serial.println("Modem already responsive.");
-    return;
-  }
+volatile bool wakeRequested = false;
 
-  Serial.println("No response — pulsing PWR_ON.");
-  digitalWrite(SARA_PWR_ON, HIGH);
-  delay(PWR_ON_PULSE_MS);
-  digitalWrite(SARA_PWR_ON, LOW);
-  delay(500);
-
-  if (modemAwake()) {
-    Serial.println("Modem woke via PWR_ON.");
-    SerialSARA.println("AT+CPSMS=0");
-    readModemResponse(1000);
-  } else {
-    Serial.println("Modem still unresponsive after PWR_ON pulse.");
-    // Per forum guidance: don't drive RESETN as a fallback here — risk outweighs benefit.
-    // If this fires, it's worth surfacing to the UI as a real error state rather than retrying blindly.
-  }
-}
-
-
-void exitAndReset() {
-    //sdWake();
-    
-    SPI.begin();    // SPI bus lost clock during standby
-    Wire.begin();   // I2C same
-    
-    //sdWake();       // SD needs SPI working first
-    ctpReset();     // touch needs I2C working first
-    delay(100);
-    screenWake();   // backlight on
-
-    
-    // reset millis() based timers since they stopped during sleep
-    lastTouchTime   = millis();
-    lastCSQUpdate   = millis();
-    lastClockUpdate = millis();
-    
+void wakeISR() {
+    wakeRequested = true;
 }
 
 void enterSleep() {
+   SerialSARA.println("AT+CEDRXS=1,4,\"0101\"");
+   readModemResponse(500);
+   // FIX: removed "AT+CEDRXSP=?" — not a real u-blox command (only +CEDRXS,
+   // +CEDRXRDP, and the +CEDRXP URC exist), so this always returned ERROR
+   // while still blocking here for up to 500ms on every single sleep entry.
+
+    // Dignified shutdown of the screen board before its Vcc is (eventually)
+    // cut — order matches the reverse of the boot sequence in setup().
     screenSleep();
     ctpSleep();
-    //sdSleep();
-    
-    // attach interrupt to SLEEP_PIN — wake when it goes LOW
-    LowPower.attachInterruptWakeup(SLEEP_PIN, exitAndReset, FALLING);
-    
-    // put CPU into standby — ~2μA
+    sdSleep();
+
+    wakeRequested = false;
+    LowPower.attachInterruptWakeup(SLEEP_PIN, wakeISR, FALLING);
     LowPower.deepSleep();
-    
-    
-    // execution resumes here after wake
+
+    if (wakeRequested) exitAndReset();
 }
+
+
+
+void exitAndReset() {
+   SerialSARA.println("AT+CEDRXS=0");
+
+    // Cold-boot the screen board back up, same relative order as setup():
+    // touch (I2C) → panel (SPI) → SD (SPI). Backlight stays off through all
+    // of it — screenWake() re-inits the panel but doesn't touch LED_SCREEN.
+    ctpReset();
+    screenWake();
+    sdWake();
+
+   //  redrawCurrentScreen();  // paint real content before the backlight comes on
+    digitalWrite(LED_SCREEN, HIGH);
+
+    lastTouchTime   = millis();
+    lastCSQUpdate   = millis();
+    lastClockUpdate = millis();
+
+    readModemResponse(2000);
+}
+
+
+/*void exitAndReset() {
+    // restore VCC first
+    digitalWrite(MOSFET_PIN, LOW);
+    delay(50);
+    
+    // restore SPI
+    pinMode(MOSI, OUTPUT);
+    pinMode(MISO, INPUT);
+    pinMode(SCK, OUTPUT);
+    pinMode(TFT_CS, OUTPUT);
+    pinMode(SD_CS, OUTPUT);
+    pinMode(TFT_DC, OUTPUT);
+    digitalWrite(TFT_CS, HIGH);
+    digitalWrite(SD_CS, HIGH);
+    SPI.begin();
+    
+    // restore I2C
+    Wire.begin();                    // reinitializes SERCOM
+                                     // takes back SDA/SCL pins
+    
+    // reinit peripherals
+    tft.begin();
+    tft.setRotation(ROTATION);
+    tft.invertDisplay(true);
+    SD.begin(SD_CS);
+    ctpReset();
+    delay(100);
+    screenWake();
+    
+    menuDrawn = false;
+    lastTouchTime = millis();
+    lastCSQUpdate = millis();
+    lastClockUpdate = millis();
+}*/
