@@ -5,12 +5,51 @@
 #include <Adafruit_ILI9341.h>
 
 extern Adafruit_ILI9341 tft;
+extern String readModemResponse(unsigned long timeout_ms);
 
-const uint16_t UI_BG     = ILI9341_BLACK;
-const uint16_t UI_KEY    = ILI9341_DARKGREY;
-const uint16_t UI_TEXT   = ILI9341_WHITE;
-const uint16_t UI_ACCENT = ILI9341_BLUE;
-const uint16_t UI_FIELD  = ILI9341_WHITE;
+// FIX: updateClock()/updateCSQ()/getCurrentTimestamp() each used to send
+// their AT command then blindly delay(300) before reading whatever had
+// arrived — a fixed wait on every call regardless of how fast the modem
+// actually answered. readModemResponse() (already used everywhere else in
+// this codebase) reads as bytes arrive and returns as soon as the response
+// goes quiet for 150ms, so the common case is far under 300ms; the 800ms
+// cap here is just a ceiling against a genuinely slow/unresponsive modem,
+// not the typical wait.
+static void queryModem(const char* cmd, char* raw, size_t rawSize) {
+    SerialSARA.println(cmd);
+    String resp = readModemResponse(800);
+    size_t n = resp.length();
+    if (n >= rawSize) n = rawSize - 1;
+    memcpy(raw, resp.c_str(), n);
+    raw[n] = '\0';
+}
+
+uint16_t UI_BG;
+uint16_t UI_SURFACE;
+uint16_t UI_BORDER;
+uint16_t UI_TEXT;
+uint16_t UI_TEXT_DIM;
+uint16_t UI_ACCENT;
+uint16_t UI_DANGER;
+uint16_t UI_FIELD;
+
+static bool uiColorsInit = false;
+
+// tft.color565() needs the tft object constructed, so these can't be plain
+// compile-time consts the way ILI9341_BLACK etc. are — same reason
+// keyboard.cpp's own initColors() is lazy rather than a global initializer.
+void uiInitColors() {
+  if (uiColorsInit) return;
+  UI_BG       = tft.color565(18,  18,  18);   // near-black, matches keyboard's COL_KB_BG
+  UI_SURFACE  = tft.color565(32,  32,  34);   // one step up from UI_BG — rows/cards
+  UI_BORDER   = tft.color565(46,  46,  48);   // hairline dividers
+  UI_TEXT     = ILI9341_WHITE;
+  UI_TEXT_DIM = tft.color565(142, 142, 147);  // iOS-style secondary label grey
+  UI_ACCENT   = tft.color565(0,   122, 255);  // iOS blue, matches keyboard's COL_SEND
+  UI_DANGER   = tft.color565(255, 69,  58);   // muted red — used sparingly
+  UI_FIELD    = ILI9341_WHITE;
+  uiColorsInit = true;
+}
 
 void uiUseDefaultFont() {
   tft.setFont(NULL);
@@ -22,16 +61,14 @@ void uiUseButtonFont() {
   tft.setTextSize(1);
 }
 
+void uiUseTitleFont() {
+  tft.setFont(&FreeSansBold9pt7b);
+  tft.setTextSize(1);
+}
+
 void updateClock() {
     char raw[64];
-    int i = 0;
-
-    SerialSARA.println("AT+CCLK?");
-    delay(300);
-    while (SerialSARA.available() && i < 63) {
-        raw[i++] = (char)SerialSARA.read();
-    }
-    raw[i] = '\0';
+    queryModem("AT+CCLK?", raw, sizeof(raw));
 
     if (strstr(raw, "+CCLK:") == NULL) return;  // no valid time
 
@@ -73,23 +110,16 @@ void updateClock() {
     //  "May 18  4:16 PM"
 
     // ── Draw on TFT ───────────────────────────────────────────
-    tft.fillRect(0, 0, 200, 20, ILI9341_BLACK);  // clear clock area
+    tft.fillRect(0, 0, 110, 20, UI_BG);  // clear clock area only — leaves battery/CSQ alone
     tft.setTextSize(1);
-    tft.setTextColor(ILI9341_WHITE);
-    tft.setCursor(0, 5);
+    tft.setTextColor(UI_TEXT_DIM);
+    tft.setCursor(4, 5);
     tft.print(timeDisplay);
 }
 
 void updateCSQ() {
     char raw[32];
-    int i = 0;
-
-    SerialSARA.println("AT+CSQ");
-    delay(300);
-    while (SerialSARA.available() && i < 31) {
-        raw[i++] = (char)SerialSARA.read();
-    }
-    raw[i] = '\0';
+    queryModem("AT+CSQ", raw, sizeof(raw));
 
 
     if (strstr(raw, "+CSQ:") == NULL) return;
@@ -122,13 +152,13 @@ void updateCSQ() {
     int gap  = 2;
     int heights[4] = {4, 7, 10, 14};
 
-    tft.fillRect(bx - 24, by, 26, 16, ILI9341_BLACK);  // clear area
+    tft.fillRect(bx - 24, by, 26, 16, UI_BG);  // clear area
 
     for (int b = 0; b < 4; b++) {
         int x = bx - (4 - b) * (barW + gap);
         int h = heights[b];
         int y = by + (14 - h);  // align bottoms
-        uint16_t color = (b < bars) ? ILI9341_WHITE : 0x2104;  // filled or dim
+        uint16_t color = (b < bars) ? UI_TEXT : UI_BORDER;  // filled or dim
         tft.fillRoundRect(x, y, barW, h, 1, color);
     }
 }
@@ -143,9 +173,9 @@ void updateBattery() {
     Serial.print(vbat, 2);
     Serial.println("V");
 
-    // tft.fillRect(100, 0, 80, 10, ILI9341_G);
+    tft.fillRect(120, 0, 80, 20, UI_BG);  // clear battery area only
     tft.setTextSize(1);
-    tft.setTextColor(ILI9341_WHITE);
+    tft.setTextColor(UI_TEXT_DIM);
     tft.setCursor(120, 5);
     tft.print(vbat, 2);
     tft.print("V");
@@ -153,14 +183,7 @@ void updateBattery() {
 
 bool getCurrentTimestamp(char* output, int outLen) {
     char raw[64];
-    int i = 0;
-
-    SerialSARA.println("AT+CCLK?");
-    delay(300);
-    while (SerialSARA.available() && i < 63) {
-        raw[i++] = (char)SerialSARA.read();
-    }
-    raw[i] = '\0';
+    queryModem("AT+CCLK?", raw, sizeof(raw));
 
     if (strstr(raw, "+CCLK:") == NULL) return false;  // no valid time
 

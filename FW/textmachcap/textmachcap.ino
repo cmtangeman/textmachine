@@ -8,6 +8,7 @@
 // Arduino libraries
 #include "Adafruit_GFX.h"      // UI rendering and extra feautres
 #include "Adafruit_ILI9341.h"  // Drives the rendered commands to the touch screen
+#include <Fonts/FreeSans9pt7b.h>
 #include <MKRNB.h>             // Handles modem commands
 
 
@@ -181,9 +182,23 @@ String readModemResponse(unsigned long timeout_ms = 2000) { // default is 2 seco
 }
 
 
+void drawReceivingScreen() {
+  tft.fillScreen(UI_BG);
+  uiUseTitleFont();
+  tft.setTextColor(UI_TEXT);
+  tft.setCursor(20, 140);
+  tft.print("Checking for");
+  tft.setCursor(20, 168);
+  tft.print("messages");
+  tft.setFont(NULL);
+  tft.drawFastHLine(20, 184, 200, UI_ACCENT);
+}
+
 void receive() {
 
    // modemWake();
+
+    drawReceivingScreen();
 
     // FIX: removed the "AT+CMGF=1" resend here — text mode is a persistent
     // modem setting already established once in modemConfigure() at boot;
@@ -283,37 +298,67 @@ void receive() {
 
     if (!anyReceived) {
         Serial.println("No new messages");
-        tft.fillScreen(ILI9341_BLACK);
-        tft.setCursor(0, 0);
-        tft.println("No new messages");
+        // FIX: previously printed this then returned immediately, so the
+        // caller's screen transition overwrote it before it was ever
+        // visible (0ms on screen). Now it actually gets seen.
+        tft.fillRect(0, 160, tft.width(), 40, UI_BG);
+        tft.setTextSize(1);
+        tft.setTextColor(UI_TEXT_DIM);
+        tft.setCursor(20, 172);
+        tft.print("No new messages");
+        delay(700);
     }
     //modemSleep();
-    //delay(500);
 }
 
 
 void text(const char* remoteNum, const char* message) {
 
   // modemWake();
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setCursor(0, 0);
 
+  // ── Sending loading screen ────────────────────────────────
+  tft.fillScreen(UI_BG);
+
+  int cidx = findContactName(remoteNum);
+  const char* toLabel = (cidx != -1) ? getContactName(cidx) : remoteNum;
+
+  uiUseTitleFont();
+  tft.setTextColor(UI_TEXT_DIM);
+  tft.setCursor(20, 110);
+  tft.print("SENDING TO");
+
+  tft.setTextColor(UI_TEXT);
+  tft.setCursor(20, 140);
+  tft.print(toLabel);
+  tft.setFont(NULL);
+
+  tft.drawFastHLine(20, 156, 200, UI_ACCENT);
+
+  tft.setTextSize(1);
+  tft.setTextColor(UI_ACCENT);
+  tft.setCursor(20, 172);
+  tft.print("Sending...");
 
   // Signal looks good, attempt send
-  tft.println("Sending...");
   sms.beginSMS(remoteNum);
   sms.print(message);
   int result = sms.endSMS();
 
+  // swap the status line for the result
+  tft.fillRect(0, 166, tft.width(), 20, UI_BG);
+  tft.setCursor(20, 172);
+
   if (result == 1) {
     char sentTimestamp[MAX_TIMESTAMP_LEN];
-    if (!getCurrentTimestamp(sentTimestamp, sizeof(sentTimestamp))) { // If our timestamp function messes up 
+    if (!getCurrentTimestamp(sentTimestamp, sizeof(sentTimestamp))) { // If our timestamp function messes up
       copyBounded(sentTimestamp, "Unknown", sizeof(sentTimestamp));
     }
     pushMessage(remoteNum, message, OUT, sentTimestamp);
-    tft.println("Sent!");
+    tft.setTextColor(UI_ACCENT);
+    tft.print("Sent");
   } else {
-    tft.println("Failed.");
+    tft.setTextColor(UI_DANGER);
+    tft.print("Failed");
   }
   // modemSleep();
   delay(1000);
@@ -371,8 +416,9 @@ void setup() {
   digitalWrite(LED_SCREEN, HIGH);
   lastTouchTime = millis();
 
-  tft.begin();  // -> Internal start listening TFT_CS = LOW and pulls it high once done. 
+  tft.begin();  // -> Internal start listening TFT_CS = LOW and pulls it high once done.
   tft.invertDisplay(true);
+  uiInitColors();  // populate the shared dark-minimalist palette (UI.h) before any screen draws
   drawSplashScreen();  // stays up through SD + cellular init, until the menu draws
 
 // ── SD AFTER TFT ──────────────────────────────────────
@@ -494,30 +540,52 @@ void loop() {
   static bool isDrawnConvo = false;
 
   if (!menuDrawn) {
-    tft.setTextColor(ILI9341_WHITE);
-    tft.setTextSize(2);
-    tft.fillScreen(ILI9341_BLACK);
+    tft.fillScreen(UI_BG);
     tft.setRotation(ROTATION);
 
-    // (int xPos, int yPos, int butWidth, int butHeight, const char* butText, uint16_t butColor)
-    if(unreadMessage){
-    msgBtn.initButton(0, 60, 240, 40, "Messages",ILI9341_RED);
-    }else{
-    msgBtn.initButton(0, 60, 240, 40, "Messages");
+    // Flat minimalist rows — same tap-target geometry as before (full width,
+    // stacked), just skinned as hairline-divided list rows instead of solid
+    // filled buttons. color=UI_BG makes each row's own fill blend into the
+    // background; Button::render() still draws the label for us.
+    const int rowH   = 52;
+    const int rowGap = 4;
+    const int rowY0  = 70;
+
+    // FIX: was `if(unreadMessage)` — missing the call, so this always
+    // evaluated a function pointer (always truthy) instead of the actual
+    // unread state. See messages.cpp for the unreadMessage() fix too.
+    bool unread = unreadMessage();
+
+    msgBtn.initButton(0, rowY0,                     240, rowH, "Messages", UI_BG);
+    compBtn.initButton(0, rowY0 + (rowH+rowGap)*1,   240, rowH, "Compose",  UI_BG);
+    refreshBtn.initButton(0, rowY0 + (rowH+rowGap)*2, 240, rowH, "Refresh", UI_BG);
+    contactsBtn.initButton(0, rowY0 + (rowH+rowGap)*3, 240, rowH, "Contacts", UI_BG);
+    //  debugBtn.initButton(...)
+
+    Button* menuRows[4] = { &msgBtn, &compBtn, &refreshBtn, &contactsBtn };
+    for (int i = 0; i < 4; i++) {
+      Button* b = menuRows[i];
+      tft.setFont(&FreeSans9pt7b);
+      tft.setTextSize(1);
+      tft.setTextColor(UI_TEXT_DIM);
+      tft.setCursor(b->x + b->width - 16, b->y + b->height/2 + 4);
+      tft.print(">");
+      tft.setFont(NULL);
+      tft.drawFastHLine(16, b->y + b->height, b->width - 32, UI_BORDER);
     }
-    compBtn.initButton(0, 110, 240, 40, "Compose");
-    refreshBtn.initButton(0, 160, 240, 40, "Refresh");
-    contactsBtn.initButton(0, 210, 240, 40, "Contacts");
-   //  debugBtn.initButton(0, 260, 240, 40, "Debug");
 
+    // Unread indicator — a small dot ahead of the chevron rather than
+    // recoloring the whole row.
+    if (unread) {
+      tft.fillCircle(msgBtn.x + msgBtn.width - 28, msgBtn.y + msgBtn.height/2, 4, UI_DANGER);
+    }
 
-    // Update the time and the power
-
-/*
+    // Status row — clock / signal / battery — sits above the nav rows,
+    // separated by its own hairline.
     updateClock();
     updateCSQ();
     updateBattery();
-*/
+    tft.drawFastHLine(0, 26, 240, UI_BORDER);
 
     menuDrawn = true;
   }
@@ -584,12 +652,17 @@ void loop() {
         
         
         if (justPressed && refreshBtn.isClicked(sp)) {
-          tft.fillScreen(ILI9341_BLACK);
-          tft.setCursor(0, 0);
+          // receive() draws its own loading/result screens now, so nothing
+          // needs to be drawn here first.
           receive();
           while (ctpRead(sp)) delay(10);
-          currentState = UI_MENU;
-          menuDrawn = false;
+          // Land on Recents (not the menu) — moveThreadToTop() already
+          // bubbles whatever thread just got a new message to the top, so
+          // this is effectively "here's what you just got," with the same
+          // back-to-menu and tap-to-open-conversation behavior Recents
+          // already has.
+          recentMessagesReset();
+          currentState = UI_MESSAGES;
           return;
         }
         
@@ -652,7 +725,7 @@ void loop() {
             keyboardReset();
 
             int cidx = findContactName(recipientNumber);
-            keyboardSwitchToMessageField(cidx != -1 ? getContactName(cidx) : recipientNumber);
+            keyboardSwitchToMessageField(cidx != -1 ? getContactName(cidx) : recipientNumber, KB_COMPOSE);
 
             currentState = UI_COMPOSE;
             return;
@@ -681,9 +754,9 @@ void loop() {
             int idx = findContactName(recipientNumber); // Looks by phone # and returns idx
 
             if(idx == -1){
-            keyboardSwitchToMessageField(recipientNumber);
+            keyboardSwitchToMessageField(recipientNumber, KB_COMPOSE);
             }else{
-            keyboardSwitchToMessageField(getContactName(idx));
+            keyboardSwitchToMessageField(getContactName(idx), KB_COMPOSE);
             }
 
             Serial.println("Phone # acquired");
@@ -741,7 +814,7 @@ void loop() {
             keyboardReset();
             
             const char* name = getContactName(picked);
-            keyboardSwitchToMessageField(name != nullptr ? name : recipientNumber);
+            keyboardSwitchToMessageField(name != nullptr ? name : recipientNumber, KB_COMPOSE);
             
             currentState = UI_COMPOSE;
             return;
@@ -770,7 +843,7 @@ void loop() {
             normalizePhoneNumber(kb, newContactPhone, MAX_PHONE_LEN);
             newContactPhone[MAX_PHONE_LEN - 1] = '\0';
             numberAquired = true;
-            keyboardSwitchToMessageField(newContactPhone);  // freeze phone in To: field
+            keyboardSwitchToMessageField(newContactPhone, KB_ADD_CONTACT);  // freeze phone in # field
             Serial.println("Phone acquired");
             wasTouched = true;
           } else if (keyboardTick(sp, justPressed, KB_ADD_CONTACT)) {

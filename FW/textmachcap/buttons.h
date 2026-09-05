@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include "types.h"
 #include "messages.h"
+#include "UI.h"
 
 
 
@@ -18,7 +19,7 @@ public:
 
   void drawBackBtn();
   Button();
-  void initButton(int xPos, int yPos, int butWidth, int butHeight, const char* butText, uint16_t butColor = 0x4228);
+  void initButton(int xPos, int yPos, int butWidth, int butHeight, const char* butText, uint16_t butColor = UI_SURFACE);
   // If nothing passed just uses default color
   void render();
   bool isClicked(const ScreenPoint& sp);

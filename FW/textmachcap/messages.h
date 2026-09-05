@@ -62,9 +62,12 @@ int wrapMessageText(const char* body, int maxWidth, char outLines[][MAX_BODY_LEN
 // pixels (using the TFT's current font/size) — used to size a msgButton's height.
 int measureMessageLines(const char* body, int maxWidth);
 
-// notifications 
-
-static bool unreadMessage();
+// notifications
+// FIX: was declared `static` here, which gives every translation unit that
+// includes this header its own private copy — textmachcap.ino calling it
+// would fail to link against messages.cpp's definition. Needs external
+// linkage since it's meant to be called from the menu screen.
+bool unreadMessage();
 
 
 // Storage

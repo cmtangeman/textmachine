@@ -138,50 +138,57 @@ void loadContactsFromSD() {
 
 
 int contactsScreen(const ScreenPoint& sp, bool justPressed) {
-  const int listStartY = 50;
-  const int rowH       = 40;
+  const int listStartY = 56;
+  const int rowH       = 46;
   const int x          = 0;
-  const int w          = 160;
+  const int w          = 172;   // row width, leaving room for delete + scroll cols
+  const int scrollColX = 210;
 
   int visibleCount = min(MAX_VISIBLE, contactCount - contactScrollOffset); // so that I never try to draw more contacts then I have
 
   if (!contactsDrawn) {
     Serial.print("contactCount = ");
     Serial.println(contactCount);
-    tft.fillScreen(ILI9341_BLACK);
-    tft.setTextColor(ILI9341_WHITE);
-    tft.setTextSize(2);
+    tft.fillScreen(UI_BG);
 
-    contactsBackBtn.initButton(0, 0, 30, 30, "<");
-    newContactsBtn.initButton(200, 0, 30, 30, "+");
+    contactsBackBtn.initButton(0, 0, 32, 32, "<");
+    newContactsBtn.initButton(204, 0, 32, 32, "+", UI_ACCENT);
 
     if (contactScrollOffset > 0) {
-    scrollUpBtn.initButton(210, listStartY, 30, 30, "^");
+      scrollUpBtn.initButton(scrollColX, listStartY, 30, 30, "^");
     }
 
-    if(contactScrollOffset+MAX_VISIBLE < contactCount){
-    scrollDownBtn.initButton(210, listStartY + MAX_VISIBLE * rowH - 30, 30, 30, "v");
+    if (contactScrollOffset + MAX_VISIBLE < contactCount) {
+      scrollDownBtn.initButton(scrollColX, listStartY + MAX_VISIBLE * rowH - 30, 30, 30, "v");
     }
 
-
-    tft.setCursor(50, 10);
+    uiUseTitleFont();
+    tft.setTextColor(UI_TEXT);
+    tft.setCursor(40, 20);
     tft.print("Contacts");
+    tft.setFont(NULL);
 
+    for (int i = 0; i < visibleCount; i++) {
+      int contactIdx = i + contactScrollOffset;  // ← actual contact
+      int y = listStartY + i * rowH;              // ← screen position
 
-for (int i = 0; i < visibleCount; i++) {
-    int contactIdx = i + contactScrollOffset;  // ← actual contact
-    int y = listStartY + i * rowH;             // ← screen position
+      // Row background is a flat tap target — name/phone/divider drawn on top.
+      contactBtns[i].initButton(x, y, w, rowH, "", UI_BG);
+      deleteContactBtns[i].initButton(176, y + (rowH - 28) / 2, 28, 28, "X", UI_SURFACE);
 
-    contactBtns[i].initButton(x, y, w, rowH, contactList[contactIdx].name);  // ← contactIdx
-    deleteContactBtns[i].initButton(165, y, 30, rowH, "X");
+      uiUseButtonFont();
+      tft.setTextColor(UI_TEXT);
+      tft.setCursor(x + 10, y + 20);
+      tft.print(contactList[contactIdx].name);
+      tft.setFont(NULL);
 
-    tft.setTextSize(1);
-    tft.setCursor(x + 80, y + 12);
-    tft.print(contactList[contactIdx].phone);  // ← contactIdx
-    tft.setTextSize(2);
+      tft.setTextSize(1);
+      tft.setTextColor(UI_TEXT_DIM);
+      tft.setCursor(x + 10, y + 32);
+      tft.print(contactList[contactIdx].phone);
 
-    tft.drawFastHLine(0, y + rowH, 195, ILI9341_WHITE);
-}
+      tft.drawFastHLine(8, y + rowH, w - 16, UI_BORDER);
+    }
 
     contactsDrawn = true;
   }

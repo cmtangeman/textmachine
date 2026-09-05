@@ -26,6 +26,10 @@ static int convoSelection = 0;
 static Button msgBackBtn;
 static Button convoBackBtn;
 static Button threadBtns[MAX_CONVERSATIONS];  // Initialize as much buttons as we might need
+static Button recentScrollUpBtn;
+static Button recentScrollDownBtn;
+static int recentScrollOffset = 0;   // threads scrolled past from the top (0 = showing newest first)
+static const int MAX_VISIBLE_RECENTS = 6;
 
 static msgButton convoMsgBtns[MAX_MESSAGES_PER_CONVO];  // one bubble per message in the open thread
 static Button convoScrollUpBtn;
@@ -361,6 +365,7 @@ const char* getConversationPhone(int selection) {
 
 void recentMessagesReset() {
   recentMessagesDrawn = false;
+  recentScrollOffset  = 0;  // always reopen Recents scrolled to the newest thread
 }
 
 void conversationReset() {
@@ -373,50 +378,83 @@ void conversationReset() {
 // -------------------------------------------------------------------------------------------------
 
 int recentMessagesScreen(const ScreenPoint& sp, bool justPressed) {
-  const int listStartY = 50;
-  const int rowH = 34;
-  const int x = 10;
-  const int w = 220;
+  const int listStartY = 56;
+  const int rowH       = 42;
+  const int x           = 10;
+  const int w           = 194;   // leaves room for the scroll column
+  const int scrollColX = 210;
+
+  int totalThreads = threadTop + 1;
+  // FIX: this used to draw every thread unconditionally with no scroll
+  // clipping (unlike contactsScreen, which already had MAX_VISIBLE
+  // pagination) — past ~8 threads it would overflow off the bottom of the
+  // screen. Now paginated the same way contactsScreen is.
+  int visibleCount = min(MAX_VISIBLE_RECENTS, totalThreads - recentScrollOffset);
+  if (visibleCount < 0) visibleCount = 0;
 
   if (!recentMessagesDrawn) {
-    tft.fillScreen(ILI9341_BLACK);
-    tft.setTextColor(ILI9341_WHITE);
-    tft.setTextSize(2);
+    tft.fillScreen(UI_BG);
 
-    msgBackBtn.initButton(0, 0, 30, 30, "<");
+    msgBackBtn.initButton(0, 0, 32, 32, "<");
 
-    tft.setCursor(50, 10);
+    uiUseTitleFont();
+    tft.setTextColor(UI_TEXT);
+    tft.setCursor(40, 20);
     tft.print("Recents");
+    tft.setFont(NULL);
 
-    for (int i = threadTop; i >= 0; i--) {
-      int msgOrder = threadTop - i;   // 0..N-1
-      int y = listStartY + msgOrder * rowH;
+    if (recentScrollOffset > 0) {
+      recentScrollUpBtn.initButton(scrollColX, listStartY, 30, 30, "^");
+    }
+    if (recentScrollOffset + MAX_VISIBLE_RECENTS < totalThreads) {
+      recentScrollDownBtn.initButton(scrollColX, listStartY + MAX_VISIBLE_RECENTS * rowH - 30, 30, 30, "v");
+    }
+
+    if (totalThreads == 0) {
+      uiUseDefaultFont();
+      tft.setTextColor(UI_TEXT_DIM);
+      tft.setCursor(x, listStartY + 20);
+      tft.print("No conversations yet");
+      tft.setTextSize(2);
+    }
+
+    for (int i = 0; i < visibleCount; i++) {
+      int orderFromTop = i + recentScrollOffset;   // 0 = most recent thread
+      int threadIdx    = threadTop - orderFromTop;
+      int y            = listStartY + i * rowH;
+
+      MessageThread& t = threads[threadIdx];
 
       char label[24];
-      int cidx = findContactName(threads[i].phoneNumber);
-
-
-
+      int cidx = findContactName(t.phoneNumber);
       if (cidx != -1) {
-        copyBounded(label, contactList[cidx].name, sizeof(label));  // safely copy the phone number onto the label. 
+        copyBounded(label, contactList[cidx].name, sizeof(label));  // safely copy the phone number onto the label.
       } else {
-        copyBounded(label, threads[i].phoneNumber, sizeof(label));
+        copyBounded(label, t.phoneNumber, sizeof(label));
       }
 
-      // Print out convo option i 
-      threadBtns[msgOrder].initButton(x, y, w, rowH, label);
-      tft.setCursor(0, y + 8);
-      tft.print(msgOrder + 1);
-      tft.print(" ");
+      // Row background is a flat tap target — name/preview/timestamp drawn on top.
+      threadBtns[i].initButton(x, y, w, rowH, "", UI_BG);
 
-      // timestamp on the right side, smaller text
+      uiUseButtonFont();
+      tft.setTextColor(UI_TEXT);
+      tft.setCursor(x, y + 16);
+      tft.print(label);
+      tft.setFont(NULL);
+
       tft.setTextSize(1);
-      tft.setCursor(x + 130, y + 12);
-      if (threads[i].lastMessageIndex >= 0) {
-          tft.print(threads[i].messages[threads[i].lastMessageIndex].timestamp);
-      }
-      tft.setTextSize(2);  // restore
+      tft.setTextColor(UI_TEXT_DIM);
+      if (t.lastMessageIndex >= 0) {
+        tft.setCursor(x + 148, y + 6);
+        tft.print(t.messages[t.lastMessageIndex].timestamp);
 
+        char preview[28];
+        copyBounded(preview, t.messages[t.lastMessageIndex].body, sizeof(preview));
+        tft.setCursor(x, y + 28);
+        tft.print(preview);
+      }
+
+      tft.drawFastHLine(8, y + rowH, w - 8, UI_BORDER);
     }
 
     recentMessagesDrawn = true;
@@ -424,9 +462,20 @@ int recentMessagesScreen(const ScreenPoint& sp, bool justPressed) {
 
   if (!justPressed) return -1;
 
-  for (int rowIndex = 0; rowIndex <= threadTop; rowIndex++) {
-    if (threadBtns[rowIndex].isClicked(sp)) {
-      convoSelection = rowIndex;
+  if (recentScrollOffset > 0 && recentScrollUpBtn.isClicked(sp)) {
+    recentScrollOffset--;
+    recentMessagesDrawn = false;
+    return -1;
+  }
+  if (recentScrollOffset + MAX_VISIBLE_RECENTS < totalThreads && recentScrollDownBtn.isClicked(sp)) {
+    recentScrollOffset++;
+    recentMessagesDrawn = false;
+    return -1;
+  }
+
+  for (int i = 0; i < visibleCount; i++) {
+    if (threadBtns[i].isClicked(sp)) {
+      convoSelection = i + recentScrollOffset;
       return convoSelection;
     }
   }
@@ -458,19 +507,21 @@ bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPresse
   MessageThread& t = threads[idx];
 
   if (!conversationDrawn) {
-    tft.fillScreen(ILI9341_BLACK);
-    tft.setTextColor(ILI9341_WHITE);
-    tft.setTextSize(2);
+    t.readThread = true;  // FIX: nothing previously marked a thread read on open
+    tft.fillScreen(UI_BG);
 
-    convoBackBtn.initButton(0, 0, 30, 30, "<");
+    convoBackBtn.initButton(0, 0, 32, 32, "<");
 
-    tft.setCursor(50, 10);
+    uiUseTitleFont();
+    tft.setTextColor(UI_TEXT);
+    tft.setCursor(40, 20);
     int cidx = findContactName(t.phoneNumber);
     if (cidx != -1) {
       tft.print(contactList[cidx].name);
     } else {
       tft.print(t.phoneNumber);
     }
+    tft.setFont(NULL);
 
     // ── Lay out bubbles bottom-up: newest at msgRegionBottom, older ones stack upward ──
     int newestIdx = t.lastMessageIndex - convoScrollOffset;
@@ -504,7 +555,7 @@ bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPresse
     }
 
     // ── Reply button — jumps to compose with this thread's number prefilled ──
-    convoReplyBtn.initButton(bubbleMarginX, replyBtnY, tft.width() - 2 * bubbleMarginX, replyBtnH, "Text");
+    convoReplyBtn.initButton(bubbleMarginX, replyBtnY, tft.width() - 2 * bubbleMarginX, replyBtnH, "Text", UI_ACCENT);
 
     conversationDrawn = true;
   }
@@ -561,13 +612,18 @@ static int findThreadByPhone(const char* phone) {
   return -1; // No convo thread available, find a new one! 
 }
 
-static bool unreadMessage() {
+// FIX: this checked `readThread == true` to mean unread, backwards from the
+// field's own meaning ("has this thread been read") and from how
+// pushMessage() sets it (false on a new message). Combined with readThread
+// never being set true anywhere (drawConversationToTFT didn't mark a thread
+// read on open), this made unreadMessage() permanently return false.
+bool unreadMessage() {
   for (int i = 0; i <= threadTop; i++) {
-    if (threads[i].readThread){
-      return true;;
+    if (!threads[i].readThread) {
+      return true;
     }
   }
-  return false;; // No convo thread available, find a new one! 
+  return false; // every thread has been read (or there are no threads)
 }
 
 static void moveThreadToTop(int idx) {

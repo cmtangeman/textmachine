@@ -5,6 +5,7 @@
 #include <Adafruit_GFX.h>
 #include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSansBold9pt7b.h>
+#include "UI.h"
 
 
 extern Adafruit_ILI9341 tft;
@@ -29,14 +30,17 @@ static Button backBtn;
   }
 
 void Button::render() {
-  tft.fillRect(x, y, width, height, ILI9341_BLACK); // COLOR
+  // FIX: this used to hardcode ILI9341_BLACK here, so `color` (set by
+  // initButton) was silently ignored and every button in the app rendered
+  // identically regardless of what color it was given.
+  tft.fillRoundRect(x, y, width, height, 6, color);
 
   tft.setFont(&FreeSans9pt7b);   // use GFX font
   tft.setTextSize(1);            // must stay 1 for GFX fonts
-  tft.setTextColor(ILI9341_WHITE);
+  tft.setTextColor(UI_TEXT);
 
   // center text better
-  int cursorX = x + 6;
+  int cursorX = x + 8;
   int cursorY = y + height/2 + 4;
 
   tft.setCursor(cursorX, cursorY);
@@ -63,11 +67,13 @@ void msgButton::initMsgButton(int xPos, int yPos, int butWidth, int butHeight,
 
 void msgButton::render() {
     uint16_t bubbleColor = (dir == OUT)
-        ? tft.color565(0, 122, 255)   // iOS blue for outgoing
-        : tft.color565(60, 60, 60);   // grey for incoming
+        ? UI_ACCENT                        // iOS blue for outgoing
+        : tft.color565(54, 54, 57);        // cool dark grey for incoming — a touch
+                                            // lighter than UI_SURFACE so bubbles read
+                                            // clearly against the plain background
 
-    tft.fillRoundRect(x, y, width, height, 8, bubbleColor); //
-    tft.setTextColor(ILI9341_WHITE);
+    tft.fillRoundRect(x, y, width, height, 8, bubbleColor);
+    tft.setTextColor(UI_TEXT);
     tft.setTextSize(1);
 
     const int padding    = 6;

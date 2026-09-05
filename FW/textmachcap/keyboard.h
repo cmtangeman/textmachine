@@ -8,7 +8,7 @@ const char* keyboardGetText(void);
 void keyboardReset(void);
 void keyboardForceRedraw(void);
 void keyboardClearText(void);
-void keyboardSwitchToMessageField(const char* keepInToField);
+void keyboardSwitchToMessageField(const char* keepInToField, int mode);
 static void drawKeyboard(void);
 static void drawNumberpad(void);
 

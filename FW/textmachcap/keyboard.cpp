@@ -196,7 +196,19 @@ static void backspaceChar() {
   redrawTypedArea();
 }
 
-void keyboardSwitchToMessageField(const char* keepInToField) {
+// FIX: `operatingMode` (used by drawKeyboard()/redrawTypedArea() to pick
+// which header — To:/Msg: vs #:/Name: — to draw) was only ever updated by
+// keyboardTick(), never by this function. So calling this right after a
+// *different* mode's keyboard was last drawn (e.g. add-contact, then
+// immediately texting the contact you just added) left the old header on
+// screen: `kbDrawn` was already true, so drawKeyboard()'s `if (!kbDrawn)`
+// header-redraw was skipped entirely, and redrawTypedArea() painted the
+// frozen field into the *previous* mode's field rects. The underlying
+// compose logic still worked correctly (hence "you can text from that
+// screen") — only the header/fields stayed visually stuck on add-contact.
+void keyboardSwitchToMessageField(const char* keepInToField, int mode) {
+  operatingMode = mode;
+  kbDrawn = false;
   alphaMode = true;
   clearTypedBuffer();
   msgOrNumber = true;
