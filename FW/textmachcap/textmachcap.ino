@@ -58,7 +58,11 @@ static char newContactPhone[MAX_PHONE_LEN];
 
 
 
-#define ROTATION 2
+#define ROTATION 4
+
+#define SCREEN_PWR_PIN 0
+
+
 
 // ── Peripherals ───────────────────────────────────────────────────
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
@@ -68,6 +72,7 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
 bool menuDrawn = false;
 bool numberAquired = false;
 int displayConvo = 0;
+bool replyFromConvo = false;  // true while composing via the conversation screen's reply bar — routes back to UI_CONVO instead of UI_MENU on send/back
 
 
 
@@ -394,6 +399,8 @@ void setup() {
   Serial.begin(115200);
   while (!Serial && millis() < 3000);
 
+  pinMode(SCREEN_PWR_PIN, OUTPUT);
+  digitalWrite(SCREEN_PWR_PIN, LOW);  // screen ON at boot
 
   // ── Pin setup ─────────────────────────────────────────
   pinMode(TFT_CS, OUTPUT);
@@ -558,7 +565,7 @@ void loop() {
 
     msgBtn.initButton(0, rowY0,                     240, rowH, "Messages", UI_BG);
     compBtn.initButton(0, rowY0 + (rowH+rowGap)*1,   240, rowH, "Compose",  UI_BG);
-    refreshBtn.initButton(0, rowY0 + (rowH+rowGap)*2, 240, rowH, "Refresh", UI_BG);
+    refreshBtn.initButton(0, rowY0 + (rowH+rowGap)*2, 240, rowH, "RX", UI_BG);
     contactsBtn.initButton(0, rowY0 + (rowH+rowGap)*3, 240, rowH, "Contacts", UI_BG);
     //  debugBtn.initButton(...)
 
@@ -662,7 +669,8 @@ void loop() {
           // back-to-menu and tap-to-open-conversation behavior Recents
           // already has.
           recentMessagesReset();
-          currentState = UI_MESSAGES;
+          menuDrawn = false;
+          currentState = UI_MENU;
           return;
         }
         
@@ -720,6 +728,7 @@ void loop() {
             strncpy(recipientNumber, phone, MAX_PHONE_LEN - 1);  // already normalized
             recipientNumber[MAX_PHONE_LEN - 1] = '\0';
             numberAquired = true;
+            replyFromConvo = true;
             conversationReset();
             recentMessagesReset();
             keyboardReset();
@@ -738,8 +747,14 @@ void loop() {
       {
         if (!numberAquired) {
           if (justPressed && keyboardBackPressed(sp)) {
-            currentState = UI_MENU;
-            menuDrawn = false;
+            if (replyFromConvo) {
+              replyFromConvo = false;
+              conversationReset();
+              currentState = UI_CONVO;
+            } else {
+              currentState = UI_MENU;
+              menuDrawn = false;
+            }
             return;
           }
           if (justPressed && msgBtnPressed(sp)) {
@@ -766,8 +781,16 @@ void loop() {
           }
         } else {
           if (justPressed && keyboardBackPressed(sp)) {
-            currentState = UI_MENU;
-            menuDrawn = false;
+            if (replyFromConvo) {
+              replyFromConvo = false;
+              numberAquired = false;
+              keyboardReset();
+              conversationReset();
+              currentState = UI_CONVO;
+            } else {
+              currentState = UI_MENU;
+              menuDrawn = false;
+            }
             return;
           } else if (justPressed && toBtnPressed(sp)) {
             numberAquired = false;
@@ -780,8 +803,20 @@ void loop() {
             Serial.println("TextSent");
             numberAquired = false;
             keyboardReset();
-            currentState = UI_MENU;
-            menuDrawn = false;
+
+            if (replyFromConvo) {
+              // Fluid reply: land back on the conversation just texted
+              // instead of the home menu. Sending just moved this thread to
+              // the top (moveThreadToTop() in pushMessage()), so it's always
+              // selection 0 now, regardless of where it sat before.
+              replyFromConvo = false;
+              displayConvo = 0;
+              conversationReset();
+              currentState = UI_CONVO;
+            } else {
+              currentState = UI_MENU;
+              menuDrawn = false;
+            }
             return;
           }
         }
@@ -1030,6 +1065,9 @@ void enterSleep() {
 
     wakeRequested = false;
     LowPower.attachInterruptWakeup(SLEEP_PIN, wakeISR, FALLING);
+
+    digitalWrite(SCREEN_PWR_PIN, HIGH);
+
     LowPower.deepSleep();
 
     if (wakeRequested) exitAndReset();
@@ -1038,7 +1076,10 @@ void enterSleep() {
 
 
 void exitAndReset() {
-   SerialSARA.println("AT+CEDRXS=0");
+   // SerialSARA.println("AT+CEDRXS=0");
+
+    digitalWrite(SCREEN_PWR_PIN, LOW);   // transistor ON → screen powered
+    delay(50);
 
     // Cold-boot the screen board back up, same relative order as setup():
     // touch (I2C) → panel (SPI) → SD (SPI). Backlight stays off through all

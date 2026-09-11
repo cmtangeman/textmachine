@@ -12,12 +12,21 @@ extern String readModemResponse(unsigned long timeout_ms);
 // arrived — a fixed wait on every call regardless of how fast the modem
 // actually answered. readModemResponse() (already used everywhere else in
 // this codebase) reads as bytes arrive and returns as soon as the response
-// goes quiet for 150ms, so the common case is far under 300ms; the 800ms
-// cap here is just a ceiling against a genuinely slow/unresponsive modem,
-// not the typical wait.
+// goes quiet for 150ms, so the common case is far under the cap below.
+//
+// FIX: a stray byte left in SerialSARA's RX buffer (a leftover unsolicited
+// notification, or a fragment from a previous command that hit its own
+// timeout mid-reply) used to satisfy readModemResponse()'s "we've started
+// getting data" check on its own — its 150ms-of-silence-means-done logic
+// could then return with just that stray fragment, before the modem's
+// actual reply to *this* command ever arrived. Draining any leftover bytes
+// before sending fixes the intermittent "response came back empty" failures
+// this caused. Timeout bumped 800ms -> 1200ms to give the modem more
+// headroom on a slow reply instead of racing it.
 static void queryModem(const char* cmd, char* raw, size_t rawSize) {
+    while (SerialSARA.available()) SerialSARA.read();  // drop anything left over from a prior exchange
     SerialSARA.println(cmd);
-    String resp = readModemResponse(800);
+    String resp = readModemResponse(1200);
     size_t n = resp.length();
     if (n >= rawSize) n = rawSize - 1;
     memcpy(raw, resp.c_str(), n);
@@ -70,7 +79,13 @@ void updateClock() {
     char raw[64];
     queryModem("AT+CCLK?", raw, sizeof(raw));
 
-    if (strstr(raw, "+CCLK:") == NULL) return;  // no valid time
+    if (strstr(raw, "+CCLK:") == NULL) {
+        // one retry — the first attempt is the one most likely to catch the
+        // modem mid-reply to something else; give it a second shot before
+        // giving up for this interval.
+        queryModem("AT+CCLK?", raw, sizeof(raw));
+        if (strstr(raw, "+CCLK:") == NULL) return;  // no valid time
+    }
 
     // ── Parse raw "26/05/18,23:15:52-28" ─────────────────────
     // find opening quote
@@ -84,12 +99,12 @@ void updateClock() {
     int hour   = (ts[9] - '0') * 10 + (ts[10] - '0'); // 23
     int minute = (ts[12] - '0') * 10 + (ts[13] - '0');// 15
 
-    // parse timezone offset (quarter hours)
-    int offsetQuarters = atoi(ts + 17);   // -28
-    int offsetHours    = offsetQuarters / 4;  // -7
-
-    // apply UTC offset
-    hour = ((hour + offsetHours) % 24 + 24) % 24;  // handles negative wrap
+    // FIX: AT+CCLK? already returns *local* time on this module — the
+    // trailing ±zz field just documents the offset the network (NITZ) used
+    // to produce it, it isn't something the reader is meant to apply again.
+    // This used to add offsetHours to `hour` a second time, silently
+    // double-shifting the displayed clock by the timezone offset (e.g. 7
+    // hours off in Pacific time). Parsed hour/minute are used as-is now.
 
     // convert to 12hr
     bool pm = hour >= 12;
@@ -143,6 +158,8 @@ void updateCSQ() {
     Serial.println(bars);
 
 
+
+
     // ── Draw 4 bars top right ─────────────────────────────────
     int bx = 240;  // right edge x
     int by = 2;    // top y
@@ -153,7 +170,11 @@ void updateCSQ() {
     int heights[4] = {4, 7, 10, 14};
 
     tft.fillRect(bx - 24, by, 26, 16, UI_BG);  // clear area
-
+    tft.setTextSize(1);
+    tft.setTextColor(UI_TEXT_DIM);
+    tft.setCursor(180, 5);
+    tft.print(csq);
+    tft.print("/30");
     for (int b = 0; b < 4; b++) {
         int x = bx - (4 - b) * (barW + gap);
         int h = heights[b];
@@ -173,7 +194,7 @@ void updateBattery() {
     Serial.print(vbat, 2);
     Serial.println("V");
 
-    tft.fillRect(120, 0, 80, 20, UI_BG);  // clear battery area only
+    tft.fillRect(120, 0, 40, 20, UI_BG);  // clear battery area only
     tft.setTextSize(1);
     tft.setTextColor(UI_TEXT_DIM);
     tft.setCursor(120, 5);
@@ -185,7 +206,10 @@ bool getCurrentTimestamp(char* output, int outLen) {
     char raw[64];
     queryModem("AT+CCLK?", raw, sizeof(raw));
 
-    if (strstr(raw, "+CCLK:") == NULL) return false;  // no valid time
+    if (strstr(raw, "+CCLK:") == NULL) {
+        queryModem("AT+CCLK?", raw, sizeof(raw));  // one retry, see updateClock()
+        if (strstr(raw, "+CCLK:") == NULL) return false;  // no valid time
+    }
 
     char* ts = strchr(raw, '"');
     if (!ts) return false;
@@ -211,34 +235,15 @@ void formatTimestamp(const char* raw, char* output, int outLen) {
     int hour   = (raw[9]-'0')*10 + (raw[10]-'0'); // 22
     int minute = (raw[12]-'0')*10 + (raw[13]-'0');// 03
 
-    // apply timezone offset
-    int offsetQuarters = atoi(raw + 17);  // -28
-    int offsetHours    = offsetQuarters / 4;  // -7
-
+    // FIX: this used to parse the trailing ±zz timezone field and add it to
+    // `hour` again, then roll the calendar date across midnight to match —
+    // but AT+CCLK? already returns local date/time (the ±zz field just
+    // documents the offset the network applied to produce it), so this was
+    // double-shifting every message timestamp by the timezone offset (e.g.
+    // 7 hours off in Pacific time) and could even roll the date to the
+    // wrong day. Parsed day/hour/minute are used as-is now — no rollover
+    // needed since nothing is being shifted.
     int y = 2000 + year;
-    static const int8_t daysInMonth[] = {31,28,31,30,31,30,31,31,30,31,30,31};
-
-    // Roll the calendar date forward/back whenever the offset pushes the hour across
-    // midnight — otherwise the day-of-week below is computed against the wrong date
-    // (hour would show the correct wrapped time, but the weekday label would be off by one).
-    hour += offsetHours;
-    while (hour >= 24) {
-        hour -= 24;
-        day++;
-        bool leap = (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0));
-        int dim = (month == 2 && leap) ? 29 : daysInMonth[month - 1];
-        if (day > dim) { day = 1; month++; if (month > 12) { month = 1; y++; } }
-    }
-    while (hour < 0) {
-        hour += 24;
-        day--;
-        if (day < 1) {
-            month--;
-            if (month < 1) { month = 12; y--; }
-            bool leap = (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0));
-            day = (month == 2 && leap) ? 29 : daysInMonth[month - 1];
-        }
-    }
 
     // determine day of week using Zeller's formula
     // adjust month — Zeller treats Jan/Feb as months 13/14 of previous year

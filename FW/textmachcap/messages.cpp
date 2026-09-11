@@ -34,7 +34,7 @@ static const int MAX_VISIBLE_RECENTS = 6;
 static msgButton convoMsgBtns[MAX_MESSAGES_PER_CONVO];  // one bubble per message in the open thread
 static Button convoScrollUpBtn;
 static Button convoScrollDownBtn;
-static Button convoReplyBtn;        // "Text" — jumps to compose with this thread's number prefilled
+static Button convoReplyBtn;        // reply bar — styled like the compose Msg field; tapping it drops into the keyboard with this thread's number prefilled
 static int convoScrollOffset  = 0;  // messages scrolled back from the newest (0 = showing newest at bottom)
 static int convoVisibleTop    = 0;  // oldest message index currently drawn on screen
 static int convoVisibleBottom = -1; // newest message index currently drawn on screen
@@ -490,9 +490,13 @@ int recentMessagesScreen(const ScreenPoint& sp, bool justPressed) {
 bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPressed) {
   const int headerEndY     = 50;    // back button + contact name — stays fixed, never scrolls
   const int msgRegionTop   = headerEndY;
-  const int msgRegionBottom = 200;  // newest bubble's bottom edge lands here
-  const int replyBtnY      = msgRegionBottom + 10;
-  const int replyBtnH      = 40;
+
+  // Reply bar sits flush against the bottom edge, mirroring the compose
+  // screen's Msg field — the message region fills the rest of the screen
+  // above it instead of stopping short and leaving dead space.
+  const int replyBarH      = 36;
+  const int replyBarY      = tft.height() - replyBarH;
+  const int msgRegionBottom = replyBarY - 6;  // newest bubble's bottom edge lands here
 
   const int bubbleMarginX = 10;
   const int scrollColW    = 30;     // reserved right-hand column for scroll buttons, mirrors contactsScreen
@@ -554,8 +558,25 @@ bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPresse
       convoScrollDownBtn.initButton(tft.width() - scrollColW, msgRegionBottom - 30, scrollColW, 30, "v");
     }
 
-    // ── Reply button — jumps to compose with this thread's number prefilled ──
-    convoReplyBtn.initButton(bubbleMarginX, replyBtnY, tft.width() - 2 * bubbleMarginX, replyBtnH, "Text", UI_ACCENT);
+    // ── Reply bar — looks and sits like the compose screen's Msg field so
+    // tapping it feels like continuing the conversation rather than jumping
+    // to another screen. Set fields directly (skip Button::render()'s
+    // rounded-rect/accent styling) so it can match that field's flat white
+    // bar exactly; isClicked() still works off the stored x/y/w/h.
+    convoReplyBtn.x      = 0;
+    convoReplyBtn.y      = replyBarY;
+    convoReplyBtn.width  = tft.width();
+    convoReplyBtn.height = replyBarH;
+    convoReplyBtn.text   = "";
+    convoReplyBtn.color  = UI_FIELD;
+
+    tft.fillRect(convoReplyBtn.x, convoReplyBtn.y, convoReplyBtn.width, convoReplyBtn.height, UI_FIELD);
+    uiUseDefaultFont();
+    tft.setTextColor(UI_TEXT_DIM);
+    tft.setCursor(8, replyBarY + 8);
+    tft.print("");
+    tft.drawFastVLine(8, replyBarY + 8, 20, tft.color565(0,  122, 255));
+    tft.setFont(NULL);
 
     conversationDrawn = true;
   }

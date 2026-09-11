@@ -405,8 +405,11 @@ else                                      drawTextHeader();
   int spcW = tft.width() - KB_X*2 - MODE_W - SEND_W - KEY_GAP*2;
   kbKeys[idx++].initButton(KB_X,                        y4, MODE_W, KEY_H, "123",  COL_SPECIAL); // 28
   kbKeys[idx++].initButton(KB_X + MODE_W + KEY_GAP,     y4, spcW,   KEY_H, "SPC",  COL_KEY);     // 29
-  kbKeys[idx++].initButton(tft.width() - SEND_W - KB_X, y4, SEND_W, KEY_H, "SEND", COL_SEND);    // 30
-
+  if(operatingMode == KB_ADD_CONTACT){
+    kbKeys[idx++].initButton(tft.width() - SEND_W - KB_X, y4, SEND_W, KEY_H, "OK", COL_SEND);    // 30
+  }else{
+  kbKeys[idx++].initButton(tft.width() - SEND_W - KB_X, y4, SEND_W, KEY_H, "TX", COL_SEND);    // 30
+  }
   kbDrawn = true;
 }
 
