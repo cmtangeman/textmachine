@@ -28,13 +28,14 @@
 #include "contacts.h"
 #include "UI.h"
 #include "splash_logo.h"
+#include "nav_icons.h"
+#include "modes.h"  // sleep/wake API — also brings in TFT_CS/CTP_RST/SD_CS/ROTATION/SCREEN_PWR_PIN/SLEEP_PIN/LED_SCREEN below
+#include "settings.h"
 
 // ── Pin definitions ───────────────────────────────────────────────
 #define TFT_DC 7
-#define TFT_CS 6
 #define TFT_RST -1
 
-#define CTP_RST 5
 #define CTP_INT 4
 #define CTP_SDA 11
 #define CTP_SCL 12
@@ -53,16 +54,7 @@ ContactStep contactStep = CONTACT_NAME;
 static char newContactName[30];
 static char newContactPhone[MAX_PHONE_LEN];
 
-#define SD_CS 3
-
-
-
-
-#define ROTATION 4
-
-#define SCREEN_PWR_PIN 0
-
-
+// SD_CS / ROTATION / SCREEN_PWR_PIN now come from modes.h
 
 // ── Peripherals ───────────────────────────────────────────────────
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
@@ -72,6 +64,15 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
 bool menuDrawn = false;
 bool numberAquired = false;
 int displayConvo = 0;
+// Phone number of whichever conversation was opened from Recents — set once,
+// the first time the user taps into a thread (see the UI_MESSAGES case
+// below), and used by convoRxBtnPressed's handler to re-find that same
+// conversation's index after receive() potentially reorders threads.
+// A fixed buffer, not a bare pointer: threads[] slots get overwritten in
+// place by moveThreadToTop(), so a raw `const char*` aliasing straight into
+// threads[idx].phoneNumber would silently start pointing at a *different*
+// conversation's data the moment any thread reorders — this holds a copy.
+char convoNumber[MAX_PHONE_LEN] = "";
 bool replyFromConvo = false;  // true while composing via the conversation screen's reply bar — routes back to UI_CONVO instead of UI_MENU on send/back
 
 
@@ -91,25 +92,21 @@ NB_SMS sms;
 //NBModem modem;
 
 
-// LOW POWER MODE STUFF 
-
-#include <ArduinoLowPower.h>
-
+// LOW POWER MODE STUFF — enterSleep()/exitAndReset()/etc. now live in modes.cpp,
+// which includes ArduinoLowPower.h itself.
 
 #define PWR_ON_PULSE_MS 250 // stay well inside the 150-3200ms window, away from the power-off overlap zone
 
-//FOR TOUCH SLEEP TIME. 
-#define SLEEP_PIN    1   // HIGH = sleep, LOW = wake
-
+//FOR TOUCH SLEEP TIME.
+// SLEEP_PIN now comes from modes.h
 
 #define FT_REG_POWER_MODE  0xA5
 #define FT_POWER_ACTIVE    0x00
 #define FT_POWER_MONITOR   0x01  // low power, still detects touch
 #define FT_POWER_HIBERNATE 0x03  // full sleep
 
-//FOR SCREEN SLEEP TIME. 
-
-#define LED_SCREEN 2
+//FOR SCREEN SLEEP TIME.
+// LED_SCREEN now comes from modes.h
 
 #define SCREEN_SLEEP_TIMEOUT 30000UL  // 30s
 
@@ -119,6 +116,8 @@ bool screenAsleep = false;
 // Hoisted out of loop() so exitAndReset() can clear stale debounce state
 // left over from the instant sleep was entered.
 bool wasTouched = false;
+
+int brightness = 250;
 
 #define CTP_WAKE_TIMEOUT_MS 300
 
@@ -140,7 +139,17 @@ bool ctpRead(ScreenPoint& sp) {
   uint16_t y = ((Wire.read() & 0x0F) << 8) | Wire.read();
 
   // Remap raw touch coords to match current display rotation.
-  // FT6336U always reports in native (rotation 0) panel space.
+  // FT6336U always reports in native (rotation 0) panel space, regardless
+  // of tft.setRotation() — landscape (compose screen's rotate button,
+  // keyboard.cpp) needs this remap decided at RUNTIME, since it's the one
+  // place this app's rotation actually changes while running; the #if
+  // block below is unchanged and still handles the fixed compile-time
+  // ROTATION for everything else.
+  if (keyboardIsLandscape()) {
+    uint16_t tmp = x;
+    x = y;
+    y = 240 - 1 - tmp;
+  } else {
 #if ROTATION == 2
   x = 240 - 1 - x;   // ILI9341 native width
   y = 320 - 1 - y;   // ILI9341 native height
@@ -153,7 +162,8 @@ bool ctpRead(ScreenPoint& sp) {
   x = 320 - 1 - y;
   y = tmp;
 #endif
-  // ROTATION == 0 needs no remap
+  // ROTATION == 0 (== 4 here) needs no remap
+  }
 
   sp = ScreenPoint((int16_t)x, (int16_t)y);
   return true;
@@ -187,38 +197,92 @@ String readModemResponse(unsigned long timeout_ms = 2000) { // default is 2 seco
 }
 
 
+// Plain text receiving screen — same layout language as text()'s "SENDING
+// TO" screen: title, hairline, status line that gets updated in place.
 void drawReceivingScreen() {
   tft.fillScreen(UI_BG);
+
   uiUseTitleFont();
+  tft.setTextColor(UI_TEXT_DIM);
+  tft.setCursor(20, 110);
+  tft.print("CHECKING FOR");
+
   tft.setTextColor(UI_TEXT);
   tft.setCursor(20, 140);
-  tft.print("Checking for");
-  tft.setCursor(20, 168);
-  tft.print("messages");
+  tft.print("Messages");
   tft.setFont(NULL);
-  tft.drawFastHLine(20, 184, 200, UI_ACCENT);
+
+  tft.drawFastHLine(20, 156, 200, UI_ACCENT);
+
+  tft.setTextSize(1);
+  tft.setTextColor(UI_ACCENT);
+  tft.setCursor(20, 172);
+  tft.print("Checking...");
 }
 
-void receive() {
+// Returns true if at least one new message was pulled down and stored.
+bool receive() {
 
-   // modemWake();
+    Serial.println("=== RECEIVE CALLED ===");
+    
+    // check modem responsive before doing anything
+    while (SerialSARA.available()) {
+        char c = (char)SerialSARA.read();
+        Serial.print("STALE: ");
+        Serial.println(c);
+    }
+    
+    SerialSARA.println("AT");
+    String ping = readModemResponse(1000);
+    Serial.print("Modem ping: ");
+    Serial.println(ping);
+    
+    // if modem not responding → bail immediately
+    if (ping.indexOf("OK") == -1) {
+        Serial.println("Modem not responsive — aborting receive");
+        return false;
+    }
 
     drawReceivingScreen();
 
-    // FIX: removed the "AT+CMGF=1" resend here — text mode is a persistent
-    // modem setting already established once in modemConfigure() at boot;
-    // nothing in this codebase switches it back to PDU mode, so resending
-    // it on every Refresh tap was a redundant round trip.
+
     SerialSARA.println("AT+CMGL=\"ALL\"");
-    
 
-    //Read entire response first 
-    String fullResponse = readModemResponse(3000);
 
-    // Print for debug 
+    String fullResponse = "";
+    unsigned long rxStart     = millis();
+    unsigned long rxLastByte  = millis();
+    // unsigned long rxLastFrame = 0;  // was the radar sweep's frame clock
+    // int sweepDeg = 0;               // was the radar sweep's rotation angle
+    const unsigned long rxTimeoutMs = 8000;
+
+    while (millis() - rxStart < rxTimeoutMs) {
+        if (SerialSARA.available()) {
+            char c = (char)SerialSARA.read();
+            fullResponse += c;
+            rxLastByte = millis();
+        } else if (fullResponse.length() > 0 && millis() - rxLastByte > 500) {
+            break;
+        }
+
+        // if (millis() - rxLastFrame >= 90) {
+        //     drawRadarSweep(sweepDeg);
+        //     sweepDeg = (sweepDeg + 18) % 360;
+        //     rxLastFrame = millis();
+        // }
+    }
+
+    // Print for debug
     Serial.println("=== MODEM RESPONSE ===");
     Serial.println(fullResponse);
     Serial.println("======================");
+
+    // One "now" fetch for this whole batch of messages — formatTimestamp()
+    // needs it to tell how many days old each message is (weekday+time vs.
+    // just the date), and there's no reason to re-query the modem's clock
+    // separately per message in the loop below.
+    char nowRaw[32];
+    bool haveNow = getCurrentRawTimestamp(nowRaw, sizeof(nowRaw));
 
     //  Now parse line by line
     bool anyReceived = false;
@@ -236,6 +300,13 @@ void receive() {
         if (!line.startsWith("+CMGL:")) continue;
 
         anyReceived = true;
+
+        // Radar blip-per-message reveal disabled along with the rest of the
+        // radar animation — see the commented-out block above.
+        // radarAddBlip();
+        // drawRadarSweep(sweepDeg);
+        // sweepDeg = (sweepDeg + 18) % 360;
+        // delay(80);
 
         // extract index
         int colonIdx = line.indexOf(':');
@@ -277,43 +348,41 @@ void receive() {
         char timestampBuf[MAX_TIMESTAMP_LEN];
         char bodyBuf[200];
 
-
-
         normalizePhoneNumber(sender.c_str(), normalizedNumber, MAX_PHONE_LEN);
         copyBounded(timestampBuf, timestamp.c_str(), MAX_TIMESTAMP_LEN);
         copyBounded(bodyBuf, body.c_str(), 200);
 
         char formatted[20];
-        formatTimestamp(timestampBuf, formatted, sizeof(formatted));
+        formatTimestamp(timestampBuf, haveNow ? nowRaw : timestampBuf, formatted, sizeof(formatted));
         Serial.println(formatted);
 
+        pushMessage(normalizedNumber, bodyBuf, IN, formatted, timestampBuf);
 
-        pushMessage(normalizedNumber, bodyBuf, IN, formatted);
-
-
-        // Flush out the read message 
+        // Flush out the read message
         char delCmd[20];
         snprintf(delCmd, sizeof(delCmd), "AT+CMGD=%d", msgIndex);
         SerialSARA.println(delCmd);
         delay(300);
         while (SerialSARA.available()) SerialSARA.read();
     }
-    // Keep goinh until we have looped through the entire message 
+    // Keep goinh until we have looped through the entire message
     // (modem prints out all of the unread messages)
 
-    if (!anyReceived) {
+    // swap the status line for the result, same pattern as text()'s Sent/Failed swap
+    tft.fillRect(0, 166, tft.width(), 20, UI_BG);
+    tft.setCursor(20, 172);
+    if (anyReceived) {
+        tft.setTextColor(UI_ACCENT);
+        tft.print("Received");
+    } else {
         Serial.println("No new messages");
-        // FIX: previously printed this then returned immediately, so the
-        // caller's screen transition overwrote it before it was ever
-        // visible (0ms on screen). Now it actually gets seen.
-        tft.fillRect(0, 160, tft.width(), 40, UI_BG);
-        tft.setTextSize(1);
         tft.setTextColor(UI_TEXT_DIM);
-        tft.setCursor(20, 172);
         tft.print("No new messages");
-        delay(700);
     }
+    delay(700);
+
     //modemSleep();
+    return anyReceived;
 }
 
 
@@ -354,11 +423,19 @@ void text(const char* remoteNum, const char* message) {
   tft.setCursor(20, 172);
 
   if (result == 1) {
+    // One modem clock query, reused both for the display string (via
+    // formatTimestamp(), same as getCurrentTimestamp() does internally)
+    // and for the raw copy pushMessage() packs for the double-tap
+    // full-timestamp reveal — no need to query twice.
+    char sentTimestampRaw[32];
     char sentTimestamp[MAX_TIMESTAMP_LEN];
-    if (!getCurrentTimestamp(sentTimestamp, sizeof(sentTimestamp))) { // If our timestamp function messes up
-      copyBounded(sentTimestamp, "Unknown", sizeof(sentTimestamp));
+    bool haveSentRaw = getCurrentRawTimestamp(sentTimestampRaw, sizeof(sentTimestampRaw));
+    if (haveSentRaw) {
+      formatTimestamp(sentTimestampRaw, sentTimestampRaw, sentTimestamp, sizeof(sentTimestamp));
+    } else {
+      copyBounded(sentTimestamp, "Unknown", sizeof(sentTimestamp)); // If our timestamp function messes up
     }
-    pushMessage(remoteNum, message, OUT, sentTimestamp);
+    pushMessage(remoteNum, message, OUT, sentTimestamp, haveSentRaw ? sentTimestampRaw : nullptr);
     tft.setTextColor(UI_ACCENT);
     tft.print("Sent");
   } else {
@@ -378,7 +455,8 @@ enum UiState { UI_MENU,
                UI_CONVO,
                UI_CONTACTS,
                UI_ADD_CONTACT,
-               UI_DEBUG };
+               UI_DEBUG,
+               UI_SETTINGS };
 
 
 UiState currentState = UI_MENU;
@@ -387,10 +465,16 @@ UiState currentState = UI_MENU;
 
 void drawSplashScreen() {
   tft.setRotation(ROTATION);
-  tft.fillScreen(ILI9341_WHITE);  // physically renders BLACK — see splash_logo.h
+  // FIX: this used to fillScreen(WHITE) + draw the logo bits in BLACK,
+  // relying on tft.invertDisplay(true) (now removed, see modes.cpp's
+  // screenWake()) to physically render it as white ink on black. With
+  // inversion gone, these need to be the literal colors we want on screen —
+  // swapped back to black background / white ink to match the rest of the
+  // app's dark theme instead of flashing white.
+  tft.fillScreen(ILI9341_BLACK);
   int16_t x = (240 - SPLASH_LOGO_W) / 2;
   int16_t y = (320 - SPLASH_LOGO_H) / 2;
-  tft.drawBitmap(x, y, splash_logo_bits, SPLASH_LOGO_W, SPLASH_LOGO_H, ILI9341_BLACK);
+  tft.drawBitmap(x, y, splash_logo_bits, SPLASH_LOGO_W, SPLASH_LOGO_H, ILI9341_WHITE);
 }
 
 // ── Setup ─────────────────────────────────────────────────────────
@@ -420,13 +504,22 @@ void setup() {
   // ── TFT FIRST ─────────────────────────────────────────
   // Turn screen on
   pinMode(LED_SCREEN, OUTPUT);  
-  digitalWrite(LED_SCREEN, HIGH);
+  digitalWrite(LED_SCREEN, LOW); // V_LED_SCREEN = Vcc
+
+  analogWrite(LED_SCREEN, brightness);
+
+
   lastTouchTime = millis();
 
   tft.begin();  // -> Internal start listening TFT_CS = LOW and pulls it high once done.
-  tft.invertDisplay(true);
+  // tft.invertDisplay(true);
   uiInitColors();  // populate the shared dark-minimalist palette (UI.h) before any screen draws
   drawSplashScreen();  // stays up through SD + cellular init, until the menu draws
+
+
+  // BRIGHTNESS 
+
+  
 
 // ── SD AFTER TFT ──────────────────────────────────────
   bool sdReady = false;
@@ -488,47 +581,42 @@ void setup() {
 }
 
 void modemConfigure() {
-    SerialSARA.println("AT+UPSV=4");        // UART always on, modem can idle
-    readModemResponse(500);
-    
-    /*
-    SerialSARA.println("AT+CPSMS=0");       // disable PSM
-    readModemResponse(500);
-    
-    SerialSARA.println("AT+CEDRXS=1,4,\"0101\"");  // enable eDRX 81 sec
-    readModemResponse(500);
-    
-    SerialSARA.println("AT+CMGF=1");        // text mode
-    readModemResponse(500);
-    
-    SerialSARA.println("AT+CPMS=\"SM\",\"SM\",\"SM\"");  // SIM memory
-    readModemResponse(500);
-    
-    SerialSARA.println("AT+CMGD=1,1");      // clear stale read messages
+    SerialSARA.println("AT+UPSV=0");        // UART always on, modem can idle
+    Serial.println(" -> AT+UPSV = 0 ");
     readModemResponse(500);
 
-    // FIX: removed "AT+CEDRXS?" — it only echoes back the request you just
-    // sent above, which you already know. AT+CEDRXRDP below is the one
-    // that's actually useful, since it reports what the network granted.
-    SerialSARA.println("AT+CEDRXRDP");
+    SerialSARA.println("AT+CPMS=\"ME\",\"ME\",\"ME\"");// Using modem memory
     readModemResponse(500);
-    */
-
 
     Serial.println("Modem configured");
 }
 
 
-// ── Loop ──────────────────────────────────────────────────────────
+
+static void drawNavTile(Button& btn, int x, int y, int w, int h,
+                         const uint8_t* iconBits, int iconW, int iconH,
+                         const char* label, bool showBadge) {
+  btn.x = x; btn.y = y; btn.width = w; btn.height = h;
+  btn.text = label; btn.color = UI_SURFACE;
+
+  tft.fillRoundRect(x, y, w, h, 12, UI_SURFACE);
+
+  int iconX = x + (w - iconW) / 2;
+  int iconY = y + (h - iconH) / 2;
+  tft.drawBitmap(iconX, iconY, iconBits, iconW, iconH, UI_TEXT);
+
+  if (showBadge) {
+    tft.fillCircle(x + w - 10, y + 10, 5, UI_DANGER);
+  }
+}
+
+
 
 void loop() {
 
   unsigned long now = millis();
 
-  // Serial.print("SLEEP_PIN: ");
-  // Serial.println(digitalRead(SLEEP_PIN));
-  
-  // Pin 1 sleep control 
+
 
     static bool wasSleeping = false;
     bool sleeping = digitalRead(SLEEP_PIN) == HIGH;
@@ -544,62 +632,59 @@ void loop() {
     if (sleeping) return;
 
   static Button msgBtn, compBtn, refreshBtn, contactsBtn, backBtn, debugBtn;
+  static Button menuSwipeBtn;  // bottom pill — opens UI_SETTINGS
   static bool isDrawnConvo = false;
 
   if (!menuDrawn) {
     tft.fillScreen(UI_BG);
     tft.setRotation(ROTATION);
 
-    // Flat minimalist rows — same tap-target geometry as before (full width,
-    // stacked), just skinned as hairline-divided list rows instead of solid
-    // filled buttons. color=UI_BG makes each row's own fill blend into the
-    // background; Button::render() still draws the label for us.
-    const int rowH   = 52;
-    const int rowGap = 4;
-    const int rowY0  = 70;
+    // 2x2 app-style icon grid — Messages/Compose on top, Refresh/Contacts
+    // below. Top row keeps its original 124px card height; the bottom row
+    // (Refresh/Contacts) is shorter, freeing room for the swipe-indicator
+    // pill beneath it that opens Settings.
+    const int outerMarginX = 14;
+    const int gapX         = 14;
+    const int gapY         = 14;
+    const int tileW        = (240 - 2 * outerMarginX - gapX) / 2;
+    const int tileHTop     = 124;
+    const int tileHBottom  = 102;
+    const int gridTop      = 34;
+
+    const int col0X = outerMarginX;
+    const int col1X = outerMarginX + tileW + gapX;
+    const int row0Y = gridTop;
+    const int row1Y = gridTop + tileHTop + gapY;
+    const int row1Bottom = row1Y + tileHBottom;
 
     // FIX: was `if(unreadMessage)` — missing the call, so this always
     // evaluated a function pointer (always truthy) instead of the actual
     // unread state. See messages.cpp for the unreadMessage() fix too.
     bool unread = unreadMessage();
 
-    msgBtn.initButton(0, rowY0,                     240, rowH, "Messages", UI_BG);
-    compBtn.initButton(0, rowY0 + (rowH+rowGap)*1,   240, rowH, "Compose",  UI_BG);
-    refreshBtn.initButton(0, rowY0 + (rowH+rowGap)*2, 240, rowH, "RX", UI_BG);
-    contactsBtn.initButton(0, rowY0 + (rowH+rowGap)*3, 240, rowH, "Contacts", UI_BG);
-    //  debugBtn.initButton(...)
+    drawNavTile(msgBtn,      col0X, row0Y, tileW, tileHTop,    RECENTS_ICON_bits,  RECENTS_ICON_W,  RECENTS_ICON_H,  "Messages", unread);
+    drawNavTile(compBtn,     col1X, row0Y, tileW, tileHTop,    COMPOSE_ICON_bits,  COMPOSE_ICON_W,  COMPOSE_ICON_H,  "Compose",  false);
+    drawNavTile(refreshBtn,  col0X, row1Y, tileW, tileHBottom, RX_ICON_bits,       RX_ICON_W,       RX_ICON_H,       "Refresh",  false);
+    drawNavTile(contactsBtn, col1X, row1Y, tileW, tileHBottom, CONTACTS_ICON_bits, CONTACTS_ICON_W, CONTACTS_ICON_H, "Contacts", false);
 
-    Button* menuRows[4] = { &msgBtn, &compBtn, &refreshBtn, &contactsBtn };
-    for (int i = 0; i < 4; i++) {
-      Button* b = menuRows[i];
-      tft.setFont(&FreeSans9pt7b);
-      tft.setTextSize(1);
-      tft.setTextColor(UI_TEXT_DIM);
-      tft.setCursor(b->x + b->width - 16, b->y + b->height/2 + 4);
-      tft.print(">");
-      tft.setFont(NULL);
-      tft.drawFastHLine(16, b->y + b->height, b->width - 32, UI_BORDER);
-    }
+    // Swipe-up indicator — opens Settings (UI_SETTINGS). Same horizontal
+    // span as the grid above it, flush with its own tap target so
+    // drawSwipeIndicator() and menuSwipeBtn always agree on bounds.
+    const int swipeH = 26;
+    const int swipeY = row1Bottom + 10;
+    menuSwipeBtn.x = outerMarginX;
+    menuSwipeBtn.y = swipeY;
+    menuSwipeBtn.width  = tileW * 2 + gapX;
+    menuSwipeBtn.height = swipeH;
+    drawSwipeIndicator(menuSwipeBtn.x, menuSwipeBtn.y, menuSwipeBtn.width, menuSwipeBtn.height, false);
 
-    // Unread indicator — a small dot ahead of the chevron rather than
-    // recoloring the whole row.
-    if (unread) {
-      tft.fillCircle(msgBtn.x + msgBtn.width - 28, msgBtn.y + msgBtn.height/2, 4, UI_DANGER);
-    }
-
-    // Status row — clock / signal / battery — sits above the nav rows,
+    // Status row — clock / signal / battery — sits above the nav grid,
     // separated by its own hairline.
-    updateClock();
-    updateCSQ();
-    updateBattery();
+
     tft.drawFastHLine(0, 26, 240, UI_BORDER);
 
     menuDrawn = true;
   }
-
-  // If there is a notification on any of the chats, add a blue iOS style circle over the messages rectangle!
-
-
 
   // Check signal first
 
@@ -622,77 +707,95 @@ void loop() {
   bool justPressed = touched && !wasTouched;
   wasTouched = touched;
 
-/*
-    // ── Screen sleep/wake handling ─────────────────────────────
+
+    // LIGHT SLEEP 
     if (touched) {
       lastTouchTime = now;
     }
 
     if (!screenAsleep && (now - lastTouchTime >= SCREEN_SLEEP_TIMEOUT)) {
-      // screenSleep(); Using analog switch for this currently 
+      //screenSleep(); //Using analog switch ONTOP of this -> this will be one of the sleep modes that doesent conserve as much as for example the analog button one. 
+      enterLightSleep();
     }
 
     if (screenAsleep) {
       if (touched) {
-        // screenWake(); -> for now relying on analog switch to determine screen/touch sleep mode. 
+        // screenWake(); // -> for now relying on analog switch to determine screen/touch sleep mode. 
+        exitAndReset_Light(); 
       }
       return;   // swallow this loop's touch — don't let it fall through to the state machine
     }
-*/ 
+
 
   switch (currentState) {
 
     case UI_MENU:
       {
 
-
+        if (justPressed && islandIsClicked(sp)){
+              updateClock();
+              updateCSQ();
+              updateBattery();
+        }
 
         if (justPressed && msgBtn.isClicked(sp)) {
           currentState = UI_MESSAGES;
           return;
         }
+
         if (justPressed && compBtn.isClicked(sp)) {
           currentState = UI_COMPOSE;
           keyboardReset();
           return;
         }
-        
-        
+
         if (justPressed && refreshBtn.isClicked(sp)) {
-          // receive() draws its own loading/result screens now, so nothing
+          // receive() draws its own receiving/result screen, so nothing
           // needs to be drawn here first.
-          receive();
+          bool gotMessage = receive();
           while (ctpRead(sp)) delay(10);
-          // Land on Recents (not the menu) — moveThreadToTop() already
-          // bubbles whatever thread just got a new message to the top, so
-          // this is effectively "here's what you just got," with the same
-          // back-to-menu and tap-to-open-conversation behavior Recents
-          // already has.
-          recentMessagesReset();
-          menuDrawn = false;
-          currentState = UI_MENU;
+          if (gotMessage) {
+            recentMessagesReset();
+            currentState = UI_MESSAGES;
+          } else {
+            menuDrawn = false;
+            currentState = UI_MENU;
+          }
           return;
         }
         
 
         if (justPressed && contactsBtn.isClicked(sp)) {
-          // tft.fillScreen(ILI9341_ORANGE);
           tft.setCursor(0, 0);
-          // tft.println("Other button touched");
           currentState = UI_CONTACTS;
-          // menuDrawn = false;
           return;
         }
-        if (justPressed && debugBtn.isClicked(sp)) {
-          currentState = UI_DEBUG;
+
+        if (justPressed && menuSwipeBtn.isClicked(sp)) {
+          settingsScreenReset();
+          currentState = UI_SETTINGS;
           return;
         }
+
+        break;
+      }
+
+    case UI_SETTINGS:
+      {
+        drawSettingsScreen(sp, justPressed);
+
+        if (justPressed && settingsCloseBtnPressed(sp)) {
+          menuDrawn = false;  // swipe pill drew over the menu — redraw it
+          currentState = UI_MENU;
+          return;
+        }
+
         break;
       }
 
     case UI_MESSAGES:
       {
-        // recentMessagesScreen(sp, false);
+        
         int picked = recentMessagesScreen(sp, justPressed);
         if (justPressed && msgBackBtnPressed(sp)) {
           recentMessagesReset();
@@ -703,6 +806,17 @@ void loop() {
         }
         if (picked != -1) {
           displayConvo = picked;
+
+          // Remember which conversation this is by phone number, the first
+          // time it's opened — see convoNumber's declaration up top.
+          const char* pickedPhone = getConversationPhone(picked);
+          if (pickedPhone != nullptr) {
+            strncpy(convoNumber, pickedPhone, MAX_PHONE_LEN - 1);
+            convoNumber[MAX_PHONE_LEN - 1] = '\0';
+          } else {
+            convoNumber[0] = '\0';
+          }
+
           conversationReset();
           currentState = UI_CONVO;
           wasTouched = true;
@@ -713,7 +827,8 @@ void loop() {
 
     case UI_CONVO:
       {
-        drawConversationToTFT(displayConvo, sp, justPressed);
+
+        drawConversationToTFT(getConversationSelectionByPhone(convoNumber), sp, justPressed, touched); // This only works if the # of convo stays the same after a RX on a specific convo tab
 
         if (justPressed && convoBackBtnPressed(sp)) {
           conversationReset();
@@ -722,6 +837,19 @@ void loop() {
           wasTouched = true;
           return;
         }
+        
+        if (justPressed && convoRxBtnPressed(sp)) {
+          // receive() draws its own receiving/result screen, so nothing
+          // needs to be drawn here first.
+          receive();  // return value doesn't matter here — we stay on this convo either way
+          while (ctpRead(sp)) delay(10);
+
+          conversationReset();
+          currentState = UI_CONVO;
+          wasTouched = true;
+          return;
+        }
+
         if (justPressed && convoReplyBtnPressed(sp)) {
           const char* phone = getConversationPhone(displayConvo);
           if (phone != nullptr) {
@@ -752,9 +880,19 @@ void loop() {
               conversationReset();
               currentState = UI_CONVO;
             } else {
+              // FIX: this path used to skip keyboardReset() entirely — harmless
+              // before, but keyboardReset() is also what restores portrait
+              // rotation (see its comment), so skipping it here could leave the
+              // rest of the app — none of which is landscape-aware — stuck
+              // sideways if the user had rotated while still on this screen.
+              keyboardReset();
               currentState = UI_MENU;
               menuDrawn = false;
             }
+            return;
+          }
+          if (justPressed && rotateBtnPressed(sp)) {
+            keyboardToggleRotation();
             return;
           }
           if (justPressed && msgBtnPressed(sp)) {
@@ -788,9 +926,16 @@ void loop() {
               conversationReset();
               currentState = UI_CONVO;
             } else {
+              // FIX: see the matching comment in the !numberAquired branch —
+              // this path also used to skip keyboardReset(), which is what
+              // restores portrait rotation.
+              keyboardReset();
               currentState = UI_MENU;
               menuDrawn = false;
             }
+            return;
+          } else if (justPressed && rotateBtnPressed(sp)) {
+            keyboardToggleRotation();
             return;
           } else if (justPressed && toBtnPressed(sp)) {
             numberAquired = false;
@@ -914,222 +1059,5 @@ void loop() {
         break;
       }
 
-      /*
-case UI_DEBUG: {
-  if (justPressed && keyboardBackPressed(sp)) {
-    keyboardReset();
-    currentState = UI_MENU;
-    menuDrawn = false;
-    return;
-  }
-
-  if (keyboardTick(sp, justPressed, KB_DEBUG)) {
-    const char* cmd = keyboardGetText();
-
-    // send to modem
-    SerialSARA.println(cmd);
-    delay(300);
-
-    // read response
-    char response[160];
-    int i = 0;
-    while (SerialSARA.available() && i < 159) {
-      char c = (char)SerialSARA.read();
-      if (c != '\r') response[i++] = c;  // strip carriage returns
-    }
-    response[i] = '\0';
-
-    // display cmd + response, wipe previous
-    debugPrint(cmd, response);
-
-    // clear input field only
-    keyboardReset();
-  }
-  break;
-}
-*/
-
-
-
-
-    default: break;
-  }
-}
-
-
-
-
-
-  // The TFT, FT6336U touch controller, and SD card all live on one board
-  // sharing a single Vcc rail — the eventual plan is to gate that rail with
-  // a MOSFET. These four sleep/wake pairs are written as if Vcc really is
-  // cut on every sleep: each "sleep" sends its IC to its lowest defined
-  // state and releases the SAMD21-side bus so nothing is mid-transaction
-  // when power drops, and each "wake" re-runs a full cold-boot init rather
-  // than a light resume, since a real Vcc cut would wipe every register,
-  // GRAM, and card-init state on the board. SAMD21 RAM/app state persists
-  // across this (it's never depowered), which is what lets us redraw
-  // whatever screen was on-screen instead of resetting to the menu.
-  
-void screenSleep(){
-  if (screenAsleep) return;
-  tft.sendCommand(0x10);       // SLPIN — panel + driver IC to sleep
-  delay(5);                    // ILI9341 needs >=5ms before another command
-  digitalWrite(LED_SCREEN, LOW);
-  digitalWrite(TFT_CS, HIGH);  // deasserted, matches SD_CS below
-  screenAsleep = true;
-}
-
-void screenWake(){
-  if (!screenAsleep) return;
-  tft.begin();                 // full cold re-init — registers/GRAM are gone
-  tft.setRotation(ROTATION);
-  tft.invertDisplay(true);
-  screenAsleep = false;
-  lastTouchTime = millis();
-  // backlight is enabled by exitAndReset() only after real content is
-  // redrawn, so the panel never flashes a frame of garbage GRAM
-}
-
-void ctpSleep() {
-    digitalWrite(CTP_RST, LOW);  // hold in reset = disabled
-    Wire.end();                  // release the SAMD21 side of the I2C bus too
-}                                 // FIX: this brace was missing — ctpReset() was
-                                  // nested inside ctpSleep(), which doesn't compile
-void ctpReset() {
-    Wire.begin();
-    digitalWrite(CTP_RST, LOW);
-    delay(5);
-    digitalWrite(CTP_RST, HIGH);
-    delay(50);
-}
-
-
-void sdSleep() {
-    SD.end();                    // releases SPI bus
-    pinMode(SD_CS, OUTPUT);
-    digitalWrite(SD_CS, HIGH);  // deselect
-}
-
-void sdWake() {
-    SD.begin(SD_CS);             // full re-init — card was fully unpowered
-}
-
-// Forces whatever's on currentState to fully repaint next pass, since a
-// real Vcc cut wipes GRAM. Uses each screen's existing "*Drawn = false"
-// reset function rather than inventing a new redraw path. keyboardReset()
-// is deliberately avoided for the compose/add-contact states — it would
-// also wipe whatever the user had typed, which we don't want after a
-// transient screen power cycle.
-void redrawCurrentScreen() {
-    switch (currentState) {
-        case UI_MENU:
-            menuDrawn = false;
-            break;
-        case UI_MESSAGES:
-            recentMessagesReset();
-            break;
-        case UI_CONVO:
-            conversationReset();
-            break;
-        case UI_CONTACTS:
-            contactsScreenReset();
-            break;
-        case UI_COMPOSE:
-        case UI_ADD_CONTACT:
-            keyboardForceRedraw();
-            break;
-        default:
-            break;
-    }
-}
-
-volatile bool wakeRequested = false;
-
-void wakeISR() {
-    wakeRequested = true;
-}
-
-void enterSleep() {
-   SerialSARA.println("AT+CEDRXS=1,4,\"0101\"");
-   readModemResponse(500);
-   // FIX: removed "AT+CEDRXSP=?" — not a real u-blox command (only +CEDRXS,
-   // +CEDRXRDP, and the +CEDRXP URC exist), so this always returned ERROR
-   // while still blocking here for up to 500ms on every single sleep entry.
-
-    // Dignified shutdown of the screen board before its Vcc is (eventually)
-    // cut — order matches the reverse of the boot sequence in setup().
-    screenSleep();
-    ctpSleep();
-    sdSleep();
-
-    wakeRequested = false;
-    LowPower.attachInterruptWakeup(SLEEP_PIN, wakeISR, FALLING);
-
-    digitalWrite(SCREEN_PWR_PIN, HIGH);
-
-    LowPower.deepSleep();
-
-    if (wakeRequested) exitAndReset();
-}
-
-
-
-void exitAndReset() {
-   // SerialSARA.println("AT+CEDRXS=0");
-
-    digitalWrite(SCREEN_PWR_PIN, LOW);   // transistor ON → screen powered
-    delay(50);
-
-    // Cold-boot the screen board back up, same relative order as setup():
-    // touch (I2C) → panel (SPI) → SD (SPI). Backlight stays off through all
-    // of it — screenWake() re-inits the panel but doesn't touch LED_SCREEN.
-    ctpReset();
-    screenWake();
-    sdWake();
-
-   //  redrawCurrentScreen();  // paint real content before the backlight comes on
-    digitalWrite(LED_SCREEN, HIGH);
-
-    lastTouchTime   = millis();
-    lastCSQUpdate   = millis();
-    lastClockUpdate = millis();
-
-    readModemResponse(2000);
-}
-
-
-/*void exitAndReset() {
-    // restore VCC first
-    digitalWrite(MOSFET_PIN, LOW);
-    delay(50);
-    
-    // restore SPI
-    pinMode(MOSI, OUTPUT);
-    pinMode(MISO, INPUT);
-    pinMode(SCK, OUTPUT);
-    pinMode(TFT_CS, OUTPUT);
-    pinMode(SD_CS, OUTPUT);
-    pinMode(TFT_DC, OUTPUT);
-    digitalWrite(TFT_CS, HIGH);
-    digitalWrite(SD_CS, HIGH);
-    SPI.begin();
-    
-    // restore I2C
-    Wire.begin();                    // reinitializes SERCOM
-                                     // takes back SDA/SCL pins
-    
-    // reinit peripherals
-    tft.begin();
-    tft.setRotation(ROTATION);
-    tft.invertDisplay(true);
-    SD.begin(SD_CS);
-    ctpReset();
-    delay(100);
-    screenWake();
-    
-    menuDrawn = false;
-    lastTouchTime = millis();
-    lastCSQUpdate = millis();
-    lastClockUpdate = millis();
-}*/
+  }  // end switch (currentState)
+}  // end loop()

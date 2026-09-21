@@ -37,7 +37,24 @@ struct Msg {
   MsgDir dir;
   bool saved;  // already written to SD — distinct from `kept` below
   bool kept;   // user tapped this message to keep it (Snapchat-style keep indicator)
-  bool read; 
+  bool read;
+
+  // Packed raw date/time, RAM-only (never persisted to SD) — lets
+  // drawConversationToTFT() show a genuinely complete timestamp (weekday +
+  // date + time together) on double-tap, since `timestamp` above only ever
+  // holds ONE of formatTimestamp()'s two abbreviated shapes. Stored as 5
+  // packed bytes instead of the ~22-byte raw modem string verbatim: this
+  // struct is instantiated MAX_CONVERSATIONS*MAX_MESSAGES_PER_CONVO (150)
+  // times as a static array, and RAM here is extremely tight (see the
+  // "Low memory" build warning) — the difference is ~750 bytes saved.
+  // hasRawTime is false for messages loaded from a prior session (SD
+  // doesn't store this), which falls back to showing just `timestamp`.
+  bool hasRawTime;
+  uint8_t rawYear;    // year - 2000
+  uint8_t rawMonth;
+  uint8_t rawDay;
+  uint8_t rawHour;
+  uint8_t rawMinute;
 };
 
 struct MessageThread {
@@ -70,8 +87,28 @@ int measureMessageLines(const char* body, int maxWidth);
 bool unreadMessage();
 
 
+// Compares two timestamps in EITHER of formatTimestamp()'s two output
+// shapes (UI.cpp) — "Www HH:MM" (weekday + time, used within the last
+// week) or "M/D/YYYY" (date only, used for anything older) — `a` and `b`
+// don't need to be the same shape as each other. Returns >0 if `a` is more
+// recent than `b`, <0 if `b` is more recent, 0 if they're equal or both
+// unparseable (e.g. "Unknown", used when a send's timestamp couldn't be
+// read from the modem).
+//
+// The weekday-only shape carries no date of its own, so it's anchored to
+// `nowRaw` — a timestamp in the RAW modem format ("yy/MM/dd,hh:mm:ss±zz",
+// e.g. straight from getCurrentRawTimestamp()), NOT formatTimestamp()'s
+// output — a real reference date is needed to resolve "which Wednesday".
+int compareTimestamps(const char* a, const char* b, const char* nowRaw);
+
 // Storage
-void pushMessage(const char* phone, const char* text, MsgDir dir, const char* time);
+// `rawTime` is the raw modem timestamp ("yy/MM/dd,hh:mm:ss±zz") this
+// specific message actually carries — an SMS's own CMGL timestamp for
+// incoming, or getCurrentRawTimestamp() for outgoing — stored (packed) for
+// the double-tap full-timestamp reveal. Pass nullptr if unavailable; the
+// message just won't have that extra precision (matches how a message
+// loaded from a prior session already has none).
+void pushMessage(const char* phone, const char* text, MsgDir dir, const char* time, const char* rawTime);
 
 void saveMessageToSD(const char* phone, Msg& msg);
 
@@ -85,10 +122,29 @@ bool msgBackBtnPressed(const ScreenPoint& sp);
 void recentMessagesReset();
 
 // Conversation UI
-bool drawConversationToTFT(int selection,const ScreenPoint& sp, bool justPressed);
+// `touched` (the raw current touch state, distinct from `justPressed`) is
+// needed to notice a bubble being held down across multiple frames — see
+// the hold-to-flip tracking inside.
+bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPressed, bool touched);
 bool convoBackBtnPressed(const ScreenPoint& sp);
 bool convoReplyBtnPressed(const ScreenPoint& sp);
+bool convoRxBtnPressed(const ScreenPoint& sp);
 const char* getConversationPhone(int selection);
+
+// Reverse of getConversationPhone(): the selection index (threadTop-relative,
+// same numbering drawConversationToTFT()/getConversationPhone() use) a phone
+// number currently sits at, or -1 if it has no open thread. Needed because
+// receiving a message can reorder threads (moveThreadToTop) out from under a
+// screen that's already open on one of them — see the in-conversation RX
+// button handler in textmachcap.ino.
+int getConversationSelectionByPhone(const char* phone);
+
+// Number of messages currently stored for `phone`'s thread (0 if it has no
+// thread). Used to tell whether a receive() just added a message to THIS
+// conversation specifically, vs. some other thread — see the in-conversation
+// RX button handler in textmachcap.ino.
+int getConversationMessageCount(const char* phone);
+
 void conversationReset();
 
 #endif

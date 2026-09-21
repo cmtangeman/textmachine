@@ -67,7 +67,7 @@ void msgButton::initMsgButton(int xPos, int yPos, int butWidth, int butHeight,
 
 void msgButton::render() {
     uint16_t bubbleColor = (dir == OUT)
-        ? UI_ACCENT                        // iOS blue for outgoing
+        ? UI_ACCENT                        // Android green for outgoing
         : tft.color565(54, 54, 57);        // cool dark grey for incoming — a touch
                                             // lighter than UI_SURFACE so bubbles read
                                             // clearly against the plain background
@@ -88,10 +88,13 @@ void msgButton::render() {
         tft.print(lines[i]);
     }
 
-    // "Kept" indicator — small dot that appears once you tap the bubble, Snapchat-style
+    // "Kept" indicator — traces the whole bubble in yellow once you tap it,
+    // instead of a corner dot, so it reads at a glance regardless of how
+    // many lines the bubble wrapped to. Two concentric rounded rects for a
+    // visible 2px stroke (Adafruit_GFX's drawRoundRect is 1px).
     if (kept) {
-        int dotR = 4;
-        tft.fillCircle(x + width - dotR - 4, y + dotR + 4, dotR, ILI9341_YELLOW);
+        tft.drawRoundRect(x,     y,     width,     height,     8, ILI9341_YELLOW);
+        tft.drawRoundRect(x + 1, y + 1, width - 2, height - 2, 7, ILI9341_YELLOW);
     }
 }
 

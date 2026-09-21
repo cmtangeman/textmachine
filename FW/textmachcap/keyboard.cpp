@@ -3,36 +3,94 @@
 #include "types.h"
 #include <Adafruit_ILI9341.h>
 #include "UI.h"
+#include "modes.h"  // ROTATION — portrait rotation value, restored on keyboardReset()
 
 extern Adafruit_ILI9341 tft;
 
-// ---------- Portrait layout (240 x 320) ----------
+// ---------- Layout ----------
+// HEADER_H/KB_X/KEY_GAP/SHIFT_W/BKSP_W/MODE_W/SEND_W/NUM_GAP stay fixed in
+// both orientations — only the dimensions that actually need to fill
+// whatever the current tft.width()/tft.height() are (KEY_W, KEY_H, KEY_W3,
+// NUM_W, NUM_H, NUM_HALF_W, SYM_W) get recomputed by recomputeLayout()
+// below, called at the top of every draw*() function. Landscape (320x240)
+// isn't just portrait's numbers swapped — it's *wider* AND *shorter* than
+// portrait (240x320), so both axes need independent recalculation, not a
+// single uniform scale factor.
 static const int HEADER_H = 70;
 static const int KB_X     = 2;
 static const int KB_Y     = HEADER_H + 8;
 
-static const int KEY_W    = 21;
-static const int KEY_H    = 56;
+static int KEY_W;   // row 1/2 letter width — fills tft.width()
+static int KEY_H;   // fills tft.height() across 4 rows
 static const int KEY_GAP  = 3;   // slightly wider gap = clearer boundaries
 
 static const int SHIFT_W  = 32;
 static const int BKSP_W   = 32;
+static int KEY_W3;   // row 3's 7 middle letters — independently fills the space between SHIFT_W and BKSP_W, not necessarily == KEY_W
 static const int MODE_W   = 44;
 static const int SEND_W   = 88;
 
-static const int NUM_W    = 77;
-static const int NUM_H    = 52;
+static int NUM_W;
+static int NUM_H;
+static int NUM_HALF_W;
 static const int NUM_GAP  = 3;
+
+static int SYM_W;
 
 static const int MAX_TEXT = 160;
 
 static int operatingMode;
 
-// ── iOS-style color palette ───────────────────────────────────────
+// ---------- Landscape toggle (compose screen only) ----------
+static bool kbLandscape = false;
+static bool kbDrawn     = false;  // hoisted up from its old spot below — keyboardToggleRotation() needs it
+static Button rotateBtn;
+
+bool keyboardIsLandscape(void) { return kbLandscape; }
+
+bool rotateBtnPressed(const ScreenPoint& sp) { return rotateBtn.isClicked(sp); }
+
+void keyboardToggleRotation(void) {
+  kbLandscape = !kbLandscape;
+  tft.setRotation(kbLandscape ? 1 : ROTATION);
+  kbDrawn = false;  // force a full reflow at the new dimensions
+}
+
+// Recomputes every orientation-dependent dimension from the CURRENT
+// tft.width()/tft.height() — must run before any draw*() function uses
+// KEY_W/KEY_H/KEY_W3/NUM_W/NUM_H/NUM_HALF_W/SYM_W.
+static void recomputeLayout() {
+  int availW = tft.width() - 2 * KB_X;
+  int availH = tft.height() - KB_Y;
+
+  // Row 1 (10 keys) / Row 2 (9 keys, centered on the same width) share KEY_W.
+  KEY_W = (availW - 9 * KEY_GAP) / 10;
+
+  // 4 rows (rows 1-4) must fit in the space below the header.
+  KEY_H = (availH - 3 * KEY_GAP) / 4;
+
+  // Row 3's 7 middle letters get their OWN width, independent of KEY_W —
+  // solved against the space actually left between the fixed-width
+  // SHIFT_W/BKSP_W keys, not assumed to match row 1/2 exactly. Two
+  // separate rows computed against two different available widths will
+  // only coincidentally match anyway; keeping them independent guarantees
+  // neither can ever overflow its own row regardless of screen width.
+  KEY_W3 = (availW - SHIFT_W - BKSP_W - 8 * KEY_GAP) / 7;
+
+  // Numpad: 3 columns x 4 rows.
+  NUM_W = (availW - 2 * NUM_GAP) / 3;
+  NUM_H = (availH - 3 * NUM_GAP) / 4;
+  NUM_HALF_W = NUM_W / 2;
+
+  // Symbol pad: 5 columns, reuses KEY_H (same 4-row height as the alpha keyboard).
+  SYM_W = (availW - 4 * KEY_GAP) / 5;
+}
+
+// ── Color palette ───────────────────────────────────────────────────
 // These are initialized in drawKeyboard/drawNumberPad after tft is ready
 static uint16_t COL_KEY;       // regular key: dark gray
 static uint16_t COL_SPECIAL;   // shift, BK, 123, ABC: slightly lighter gray
-static uint16_t COL_SEND;      // iOS blue
+static uint16_t COL_SEND;      // Android green
 static uint16_t COL_KB_BG;     // keyboard background: near black
 static uint16_t COL_FIELD;     // input field: white
 static uint16_t COL_HEADER;    // header bar background
@@ -40,14 +98,13 @@ static uint16_t COL_HEADER;    // header bar background
 static bool colorsInit = false;
 
 static bool symMode = false;
-static const int SYM_W = 46;
 static Button symKeys[20];
 
 static void initColors() {
   if (colorsInit) return;
   COL_KEY     = tft.color565(50,  50,  50);
   COL_SPECIAL = tft.color565(80,  80,  80);
-  COL_SEND    = tft.color565(0,  122, 255);
+  COL_SEND    = tft.color565(164, 198, 57);  // Android green (#A4C639), matches UI_ACCENT
   COL_KB_BG   = tft.color565(22,  22,  22);
   COL_FIELD   = tft.color565(255, 255, 255);
   COL_HEADER  = tft.color565(28,  28,  30);
@@ -63,7 +120,6 @@ static Button switchkeyboardButton;
 static Button nameBtn;
 static Button numberBtn;
 
-static bool kbDrawn     = false;
 static bool msgOrNumber = false;
 static bool alphaMode   = false;
 static bool capsLock    = false;
@@ -235,9 +291,17 @@ static void drawTextHeader() {
   // Header bar
   tft.fillRect(0, 0, tft.width(), HEADER_H - 4, COL_HEADER);
 
+  // Compose only: reserve top-right room (same size as kbBackBtn, mirrored
+  // to the opposite corner) for the portrait/landscape rotate button, so
+  // the "To:" field needs to stop short of it instead of running edge to
+  // edge like it does in the other header variants.
+  const int rotateBtnW = 28;
+  int toFieldW = tft.width() - 78;
+  if (operatingMode == KB_COMPOSE) toFieldW -= (rotateBtnW + 6);
+
   // Input fields (white boxes)
-  tft.fillRect(76, 2,  tft.width() - 78, 30, COL_FIELD);
-  tft.fillRect(0,  38, tft.width(),       28, COL_FIELD);
+  tft.fillRect(76, 2,  toFieldW, 30, COL_FIELD);
+  tft.fillRect(0,  38, tft.width(), 28, COL_FIELD);
 
   // Labels
   tft.setTextColor(ILI9341_WHITE);
@@ -254,11 +318,21 @@ static void drawTextHeader() {
 
   // Buttons on header
   kbBackBtn.initButton(2, 2, 28, 28, "<", COL_SPECIAL);
-  toBtn.initButton(76, 2, tft.width() - 78, 30, "", COL_FIELD);
+  toBtn.initButton(76, 2, toFieldW, 30, "", COL_FIELD);
   msgBtn.initButton(0, 38, tft.width(), 28, "", COL_FIELD);
   // switchkeyboardButton.initButton(tft.width() - 50, 38, 48, 24, alphaMode ? "123" : "ABC", COL_SPECIAL);
 
-  redrawTypedArea();
+  if (operatingMode == KB_COMPOSE) {
+
+    redrawTypedArea();
+    
+    rotateBtn.initButton(tft.width() - rotateBtnW - 2, 2, rotateBtnW, 28, "R", UI_ACCENT);
+  } else {
+    rotateBtn.x = -1000;  // off-screen — not drawn or tappable outside compose
+    rotateBtn.width = rotateBtn.height = 0;
+  }
+
+  
 }
 
 
@@ -320,9 +394,8 @@ static void drawDebugHeader() {
 }
 // ---------- 3x4 Numpad ----------
 
-static const int NUM_HALF_W = 37;
-
 static void drawNumberPad() {
+  recomputeLayout();
   if (!kbDrawn) {
     if (operatingMode == KB_ADD_CONTACT) drawContactHeader();
     else if (operatingMode == KB_COMPOSE) drawTextHeader();
@@ -360,6 +433,7 @@ static void drawNumberPad() {
 // ---------- Alpha keyboard ----------
 
 static void drawKeyboard() {
+  recomputeLayout();
 
   if (!kbDrawn) {
     if      (operatingMode == KB_ADD_CONTACT) drawContactHeader();
@@ -389,14 +463,18 @@ else                                      drawTextHeader();
     kbKeys[idx++].initButton(r2off + i * (KEY_W + KEY_GAP), KB_Y + KEY_H + KEY_GAP, KEY_W, KEY_H, label, COL_KEY);
   }
 
-  // Row 3: special ^ + 7 letters + special BK
+  // Row 3: special ^ + 7 letters + special BK. The 7 letters use KEY_W3,
+  // NOT KEY_W — SHIFT_W/BKSP_W stay a fixed size either orientation, so
+  // this row's available middle space isn't the same as row 1/2's, and
+  // reusing KEY_W here would over/undershoot BKSP_W's position depending
+  // on how much wider landscape is than portrait. See recomputeLayout().
   int y3 = KB_Y + 2 * (KEY_H + KEY_GAP);
   kbKeys[idx++].initButton(KB_X, y3, SHIFT_W, KEY_H, capsLock ? "CAP" : "^", COL_SPECIAL); // 19
 
   int lettersStart = KB_X + SHIFT_W + KEY_GAP;
   for (int i = 0; i < 7; i++) {
     char label[2] = { r3[i], '\0' };
-    kbKeys[idx++].initButton(lettersStart + i * (KEY_W + KEY_GAP), y3, KEY_W, KEY_H, label, COL_KEY); // 20-26
+    kbKeys[idx++].initButton(lettersStart + i * (KEY_W3 + KEY_GAP), y3, KEY_W3, KEY_H, label, COL_KEY); // 20-26
   }
   kbKeys[idx++].initButton(tft.width() - BKSP_W - KB_X, y3, BKSP_W, KEY_H, "BK", COL_SPECIAL); // 27
 
@@ -416,6 +494,7 @@ else                                      drawTextHeader();
 // ---------- Symbol Mode----- 
 
 static void drawSymbolPad() {
+  recomputeLayout();
   if (!kbDrawn) {
     if      (operatingMode == KB_ADD_CONTACT) drawContactHeader();
 else if (operatingMode == KB_DEBUG)       drawDebugHeader();
@@ -570,6 +649,17 @@ void keyboardReset(void) {
   alphaMode   = false;
   capsLock    = false;
 
+  // keyboardReset() runs on every entry into AND exit out of the
+  // keyboard screens (fresh compose/add-contact, back-out, post-send) —
+  // the one place guaranteed to run on both sides of every visit, so it's
+  // where landscape (compose-only) always gets undone. Without this, e.g.
+  // backing out of a landscape compose session would leave the rest of
+  // the app (menu, contacts, messages — none of which are landscape-aware)
+  // rendered sideways.
+  if (kbLandscape) {
+    kbLandscape = false;
+    tft.setRotation(ROTATION);
+  }
 }
 
 // Forces the next keyboardTick() to fully repaint (e.g. after GRAM was lost

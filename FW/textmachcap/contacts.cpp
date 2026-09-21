@@ -41,8 +41,8 @@ void deleteContact(int idx);
 
 int findContactPhone(const char* name) {
     for (int i = 0; i < contactCount; i++) {
-        Serial.print(i + 1);
-        Serial.print(". ");
+       // Serial.print(i + 1);
+       // Serial.print(". ");
 
         if (strcmp(name, contactList[i].name) == 0) {
             return i; // contactList[i].phone;
@@ -54,8 +54,8 @@ int findContactPhone(const char* name) {
 
 int findContactName(const char* phone){
     for (int i = 0; i < contactCount; i++) {
-        Serial.print(i + 1);
-        Serial.print(". ");
+       //  Serial.print(i + 1);
+        // Serial.print(". ");
 
         if (strcmp(phone, contactList[i].phone) == 0) {
             return i; // contactList[i].phone;

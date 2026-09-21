@@ -7,22 +7,6 @@
 extern Adafruit_ILI9341 tft;
 extern String readModemResponse(unsigned long timeout_ms);
 
-// FIX: updateClock()/updateCSQ()/getCurrentTimestamp() each used to send
-// their AT command then blindly delay(300) before reading whatever had
-// arrived — a fixed wait on every call regardless of how fast the modem
-// actually answered. readModemResponse() (already used everywhere else in
-// this codebase) reads as bytes arrive and returns as soon as the response
-// goes quiet for 150ms, so the common case is far under the cap below.
-//
-// FIX: a stray byte left in SerialSARA's RX buffer (a leftover unsolicited
-// notification, or a fragment from a previous command that hit its own
-// timeout mid-reply) used to satisfy readModemResponse()'s "we've started
-// getting data" check on its own — its 150ms-of-silence-means-done logic
-// could then return with just that stray fragment, before the modem's
-// actual reply to *this* command ever arrived. Draining any leftover bytes
-// before sending fixes the intermittent "response came back empty" failures
-// this caused. Timeout bumped 800ms -> 1200ms to give the modem more
-// headroom on a slow reply instead of racing it.
 static void queryModem(const char* cmd, char* raw, size_t rawSize) {
     while (SerialSARA.available()) SerialSARA.read();  // drop anything left over from a prior exchange
     SerialSARA.println(cmd);
@@ -54,7 +38,7 @@ void uiInitColors() {
   UI_BORDER   = tft.color565(46,  46,  48);   // hairline dividers
   UI_TEXT     = ILI9341_WHITE;
   UI_TEXT_DIM = tft.color565(142, 142, 147);  // iOS-style secondary label grey
-  UI_ACCENT   = tft.color565(0,   122, 255);  // iOS blue, matches keyboard's COL_SEND
+  UI_ACCENT   = tft.color565(75, 83, 32); // deep military green 
   UI_DANGER   = tft.color565(255, 69,  58);   // muted red — used sparingly
   UI_FIELD    = ILI9341_WHITE;
   uiColorsInit = true;
@@ -202,7 +186,7 @@ void updateBattery() {
     tft.print("V");
 }
 
-bool getCurrentTimestamp(char* output, int outLen) {
+bool getCurrentRawTimestamp(char* output, int outLen) {
     char raw[64];
     queryModem("AT+CCLK?", raw, sizeof(raw));
 
@@ -215,25 +199,53 @@ bool getCurrentTimestamp(char* output, int outLen) {
     if (!ts) return false;
     ts++;  // skip opening quote → "26/06/30,22:03:51-28"
 
-    formatTimestamp(ts, output, outLen);
+    copyBounded(output, ts, outLen);
     return true;
 }
 
-void formatTimestamp(const char* raw, char* output, int outLen) {
+bool getCurrentTimestamp(char* output, int outLen) {
+    char raw[32];
+    if (!getCurrentRawTimestamp(raw, sizeof(raw))) return false;
+    formatTimestamp(raw, raw, output, outLen);  // formatting "now" against itself — always 0 days ago
+    return true;
+}
+
+// Parses the "yy/MM/dd,hh:mm:ss±zz" shape shared by AT+CCLK? and a CMGL
+// line's quoted timestamp field. Returns false (out params untouched) if
+// `raw` is too short to hold the fields we read.
+static bool parseRawTimestamp(const char* raw, int* year, int* month, int* day, int* hour, int* minute) {
+    if (!raw || strlen(raw) < 17) return false;
+    *year   = 2000 + (raw[0]-'0')*10 + (raw[1]-'0');  // 26 -> 2026
+    *month  = (raw[3]-'0')*10 + (raw[4]-'0');         // 06
+    *day    = (raw[6]-'0')*10 + (raw[7]-'0');         // 30
+    *hour   = (raw[9]-'0')*10 + (raw[10]-'0');        // 22
+    *minute = (raw[12]-'0')*10 + (raw[13]-'0');       // 03
+    return true;
+}
+
+// Days since 1970-01-01 for the proleptic Gregorian calendar (Howard
+// Hinnant's days_from_civil) — correct across month/year boundaries and
+// leap years, which a cyclic weekday-only comparison can't do. Only used
+// here to diff two nearby dates, not as a real calendar library.
+static long daysFromCivil(int y, int m, int d) {
+    y -= m <= 2;
+    long era = (y >= 0 ? y : y - 399) / 400;
+    unsigned yoe = (unsigned)(y - era * 400);                          // [0, 399]
+    unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;      // [0, 365]
+    unsigned doe = yoe * 365 + yoe/4 - yoe/100 + doy;                  // [0, 146096]
+    return era * 146097 + (long)doe - 719468;
+}
+
+void formatTimestamp(const char* raw, const char* nowRaw, char* output, int outLen) {
     // raw = "26/06/30,22:03:51-28"
     //        0123456789012345678901
 
-    if (!raw || strlen(raw) < 17) {
-        strncpy(output, raw, outLen);
+    int year, month, day, hour, minute;
+    if (!parseRawTimestamp(raw, &year, &month, &day, &hour, &minute)) {
+        strncpy(output, raw ? raw : "", outLen);
+        output[outLen - 1] = '\0';
         return;
     }
-
-    // parse fields by fixed index
-    int year   = (raw[0]-'0')*10 + (raw[1]-'0');  // 26
-    int month  = (raw[3]-'0')*10 + (raw[4]-'0');  // 06
-    int day    = (raw[6]-'0')*10 + (raw[7]-'0');  // 30
-    int hour   = (raw[9]-'0')*10 + (raw[10]-'0'); // 22
-    int minute = (raw[12]-'0')*10 + (raw[13]-'0');// 03
 
     // FIX: this used to parse the trailing ±zz timezone field and add it to
     // `hour` again, then roll the calendar date across midnight to match —
@@ -243,12 +255,31 @@ void formatTimestamp(const char* raw, char* output, int outLen) {
     // 7 hours off in Pacific time) and could even roll the date to the
     // wrong day. Parsed day/hour/minute are used as-is now — no rollover
     // needed since nothing is being shifted.
-    int y = 2000 + year;
+
+    // How many days ago was this, relative to `nowRaw`? Needs the actual
+    // calendar date (not just a weekday name) to get right across
+    // month/year boundaries — a message from "last Tuesday" three weeks ago
+    // and one from yesterday can share a weekday name otherwise.
+    int daysAgo = 0;
+    int nYear, nMonth, nDay, nHour, nMinute;
+    if (parseRawTimestamp(nowRaw, &nYear, &nMonth, &nDay, &nHour, &nMinute)) {
+        long diff = daysFromCivil(nYear, nMonth, nDay) - daysFromCivil(year, month, day);
+        if (diff > 0) daysAgo = (int)diff;  // negative (clock skew / formatting "now" itself) treated as 0
+    }
+    // if nowRaw doesn't parse, daysAgo stays 0 — falls back to the recent-weekday branch below
+
+    if (daysAgo >= 7) {
+        // Older than a week — a weekday name alone would be ambiguous (which
+        // Wednesday?), so show the date instead. No leading zeros, matches
+        // typical US short-date style: "9/5/2026", not "09/05/2026".
+        snprintf(output, outLen, "%d/%d/%d", month, day, year);
+        return;
+    }
 
     // determine day of week using Zeller's formula
     // adjust month — Zeller treats Jan/Feb as months 13/14 of previous year
     int m = month;
-    int zy = y;
+    int zy = year;
     if (m < 3) { m += 12; zy--; }
     int k = zy % 100;
     int j = zy / 100;
@@ -256,13 +287,66 @@ void formatTimestamp(const char* raw, char* output, int outLen) {
     // Zeller: 0=Sat, 1=Sun, 2=Mon, 3=Tue, 4=Wed, 5=Thu, 6=Fri
     const char* days[] = {"Sat","Sun","Mon","Tue","Wed","Thu","Fri"};
 
-    // get today for comparison — use AT+CCLK or hardcode check
-    // for now just check if it was within last 7 days
-    // simple approach: if day matches one of last 7 days show weekday
-    // otherwise show date
-
-    // determine if within this week — compare to current day
-    // you already have updateClock() which reads AT+CCLK
-    // for now just always show weekday + time
     snprintf(output, outLen, "%s %02d:%02d", days[dow], hour, minute);
+}
+
+void formatMessageTime(const char* raw, char* output, int outLen) {
+    int year, month, day, hour, minute;
+    if (!parseRawTimestamp(raw, &year, &month, &day, &hour, &minute)) {
+        strncpy(output, raw ? raw : "", outLen);
+        output[outLen - 1] = '\0';
+        return;
+    }
+
+    bool pm = hour >= 12;
+    int h12 = hour % 12;
+    if (h12 == 0) h12 = 12;
+    snprintf(output, outLen, "%d:%02d %s", h12, minute, pm ? "PM" : "AM");
+}
+
+void formatFullTimestamp(const char* raw, char* output, int outLen) {
+    int year, month, day, hour, minute;
+    if (!parseRawTimestamp(raw, &year, &month, &day, &hour, &minute)) {
+        strncpy(output, raw ? raw : "", outLen);
+        output[outLen - 1] = '\0';
+        return;
+    }
+
+    char timePart[16];
+    formatMessageTime(raw, timePart, sizeof(timePart));
+
+    int m = month;
+    int zy = year;
+    if (m < 3) { m += 12; zy--; }
+    int k = zy % 100;
+    int j = zy / 100;
+    int dow = (day + (13*(m+1))/5 + k + k/4 + j/4 - 2*j) % 7;  // 0=Sat..6=Fri
+    const char* days[] = {"Sat","Sun","Mon","Tue","Wed","Thu","Fri"};
+
+    snprintf(output, outLen, "%s %d/%d/%d %s", days[dow], month, day, year, timePart);
+}
+
+
+
+
+  bool  islandIsClicked(const ScreenPoint& sp) {
+    return (sp.x >= 0 && sp.x <= 240 && sp.y >= 0 && sp.y <= 26);
+}
+
+void drawSwipeIndicator(int x, int y, int w, int h, bool pointDown) {
+    tft.fillRoundRect(x, y, w, h, h / 2, UI_SURFACE);
+
+    int cx = x + w / 2;
+    int cy = y + h / 2;
+    int armW = 8;   // chevron half-width
+    int armH = 5;   // chevron half-height
+    int top    = pointDown ? cy - armH : cy + armH;
+    int bottom = pointDown ? cy + armH : cy - armH;
+
+    // Two stacked passes, 1px apart, for a slightly bolder chevron —
+    // Adafruit_GFX has no built-in thick-line draw.
+    for (int dy = 0; dy <= 1; dy++) {
+        tft.drawLine(cx - armW, top + dy, cx, bottom + dy, UI_TEXT_DIM);
+        tft.drawLine(cx, bottom + dy, cx + armW, top + dy, UI_TEXT_DIM);
+    }
 }

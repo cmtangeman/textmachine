@@ -35,9 +35,26 @@ static msgButton convoMsgBtns[MAX_MESSAGES_PER_CONVO];  // one bubble per messag
 static Button convoScrollUpBtn;
 static Button convoScrollDownBtn;
 static Button convoReplyBtn;        // reply bar — styled like the compose Msg field; tapping it drops into the keyboard with this thread's number prefilled
+static Button convoRxBtn;           // top-right RX button — checks for new messages without leaving this conversation
 static int convoScrollOffset  = 0;  // messages scrolled back from the newest (0 = showing newest at bottom)
 static int convoVisibleTop    = 0;  // oldest message index currently drawn on screen
 static int convoVisibleBottom = -1; // newest message index currently drawn on screen
+
+// Hold-a-bubble-2-seconds-to-flip-it state (double-tap turned out
+// unreliable on the actual touch hardware — a sustained hold is much
+// easier to detect cleanly than two discrete taps in a tight window).
+// Unlike double-tap, a hold CAN be cleanly told apart from an ordinary
+// short tap before deciding what to do: the "kept" toggle now fires on
+// RELEASE rather than on touch-down, only if the press never crossed the
+// long-press threshold — see the tap/hold handling in
+// drawConversationToTFT() below, which (unlike the rest of this file's
+// touch handling) has to run every frame, not just on justPressed, since
+// noticing a hold means watching the touch persist across frames.
+static int convoFlippedIdx   = -1;  // message index currently showing its flipped "back" (just the time), -1 = none
+static int convoPressIdx     = -1;  // message index the in-progress touch started on, -1 = none/not on a bubble
+static unsigned long convoPressStartMillis = 0;
+static bool convoLongPressFired = false;  // so crossing the threshold flips exactly once per hold, not every frame past it
+static const unsigned long CONVO_LONG_PRESS_MS = 2000;
 
 static bool recentMessagesDrawn = false;
 static bool conversationDrawn   = false;
@@ -197,6 +214,136 @@ void saveMessageToSD(const char* phone, Msg& msg) {
     Serial.println(filename);
 }
 
+// -------------------------------------------------------------------------------------------------
+// Timestamp comparison
+// -------------------------------------------------------------------------------------------------
+
+// Weekday index matching formatTimestamp()'s own days[] table (UI.cpp) —
+// 0=Sat,1=Sun,2=Mon,3=Tue,4=Wed,5=Thu,6=Fri (Zeller's congruence order, not
+// alphabetical or Sun-first). Returns -1 if `raw` doesn't start with a
+// recognized 3-letter abbreviation.
+static int weekdayIndex(const char* raw) {
+    static const char* days[] = {"Sat","Sun","Mon","Tue","Wed","Thu","Fri"};
+    for (int i = 0; i < 7; i++) {
+        if (strncmp(raw, days[i], 3) == 0) return i;
+    }
+    return -1;
+}
+
+// Zeller's congruence — same convention as weekdayIndex() (0=Sat..6=Fri).
+// Duplicated from UI.cpp's formatTimestamp() (not shared via a header,
+// same reasoning as daysFromCivil() below) since this file needs it to
+// anchor the weekday-only display shape to an actual date.
+static int zellerWeekday(int y, int m, int d) {
+    if (m < 3) { m += 12; y--; }
+    int k = y % 100, j = y / 100;
+    return (d + (13*(m+1))/5 + k + k/4 + j/4 - 2*j) % 7;
+}
+
+// Days since 1970-01-01 (Howard Hinnant's days_from_civil) — duplicated
+// from UI.cpp's formatTimestamp(), which has the full explanation. Kept as
+// a separate copy rather than shared through a header since both this file
+// and UI.cpp already parse timestamps independently and neither owns a
+// general "date math" module — this and zellerWeekday() above are the only
+// two pieces that would move, and they're tiny/self-contained.
+static long daysFromCivil(int y, int m, int d) {
+    y -= m <= 2;
+    long era = (y >= 0 ? y : y - 399) / 400;
+    unsigned yoe = (unsigned)(y - era * 400);
+    unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    unsigned doe = yoe * 365 + yoe/4 - yoe/100 + doy;
+    return era * 146097 + (long)doe - 719468;
+}
+
+// Parses the raw AT+CCLK/CMGL modem shape ("yy/MM/dd,hh:mm:ss±zz") just
+// far enough to get the date — same fields UI.cpp's parseRawTimestamp()
+// reads, needed here only to turn `nowRaw` (see compareTimestamps() below)
+// into an actual reference date.
+static bool parseRawModemDate(const char* raw, int* year, int* month, int* day) {
+    if (!raw || strlen(raw) < 8) return false;
+    *year  = 2000 + (raw[0]-'0')*10 + (raw[1]-'0');
+    *month = (raw[3]-'0')*10 + (raw[4]-'0');
+    *day   = (raw[6]-'0')*10 + (raw[7]-'0');
+    return true;
+}
+
+// Resolves either of formatTimestamp()'s two display shapes into an
+// absolute day count (days-since-epoch) plus time-of-day, so a "Wed 14:32"
+// and a "9/5/2026" can be ranked against each other on equal footing —
+// each is only ever ONE of these two representations of a real timestamp,
+// picked by age at format time, not both at once, so recovering a
+// comparable point in time means handling whichever one is actually there:
+//   "Www HH:MM" — weekday + time, no date of its own; anchored to the most
+//                 recent day matching that weekday, relative to
+//                 (refYear, refMonth, refDay) — i.e. "now".
+//   "M/D/YYYY"  — an actual date, no time (treated as midnight).
+// Returns false for anything matching neither shape (e.g. "Unknown").
+static bool resolveTimestamp(const char* raw, int refYear, int refMonth, int refDay,
+                              long* dayCount, int* hour, int* minute) {
+    if (!raw) return false;
+    size_t len = strlen(raw);
+
+    // "Www HH:MM" — always exactly 9 chars (%02d zero-pads hour/minute).
+    if (len == 9 && raw[3] == ' ' && raw[6] == ':') {
+        int wd = weekdayIndex(raw);
+        if (wd == -1) return false;
+        if (!isdigit((unsigned char)raw[4]) || !isdigit((unsigned char)raw[5]) ||
+            !isdigit((unsigned char)raw[7]) || !isdigit((unsigned char)raw[8])) {
+            return false;
+        }
+        int h = (raw[4]-'0')*10 + (raw[5]-'0');
+        int m = (raw[7]-'0')*10 + (raw[8]-'0');
+        if (h > 23 || m > 59) return false;
+
+        int today   = zellerWeekday(refYear, refMonth, refDay);
+        int daysAgo = (today - wd + 7) % 7;
+        *dayCount = daysFromCivil(refYear, refMonth, refDay) - daysAgo;
+        *hour = h;
+        *minute = m;
+        return true;
+    }
+
+    // "M/D/YYYY" — 1-2 digit month, 1-2 digit day, 4-digit year, no
+    // leading zeros (matches formatTimestamp()'s snprintf("%d/%d/%d", ...)).
+    int mo = 0, d = 0, y = 0;
+    const char* p = raw;
+    if (!isdigit((unsigned char)*p)) return false;
+    while (isdigit((unsigned char)*p)) { mo = mo * 10 + (*p - '0'); p++; }
+    if (*p != '/' || mo < 1 || mo > 12) return false;
+    p++;
+    if (!isdigit((unsigned char)*p)) return false;
+    while (isdigit((unsigned char)*p)) { d = d * 10 + (*p - '0'); p++; }
+    if (*p != '/' || d < 1 || d > 31) return false;
+    p++;
+    if (!isdigit((unsigned char)*p)) return false;
+    while (isdigit((unsigned char)*p)) { y = y * 10 + (*p - '0'); p++; }
+    if (*p != '\0' || y < 1970) return false;
+
+    *dayCount = daysFromCivil(y, mo, d);
+    *hour = 0;
+    *minute = 0;  // date-only shape carries no time
+    return true;
+}
+
+int compareTimestamps(const char* a, const char* b, const char* nowRaw) {
+    int refYear, refMonth, refDay;
+    bool haveRef = parseRawModemDate(nowRaw, &refYear, &refMonth, &refDay);
+
+    long aDays = 0, bDays = 0;
+    int ah = 0, am = 0, bh = 0, bm = 0;
+    bool aOk = haveRef && resolveTimestamp(a, refYear, refMonth, refDay, &aDays, &ah, &am);
+    bool bOk = haveRef && resolveTimestamp(b, refYear, refMonth, refDay, &bDays, &bh, &bm);
+
+    if (!aOk && !bOk) return 0;
+    if (!aOk) return -1;  // unparseable (or no reference date to anchor against) sorts oldest
+    if (!bOk) return 1;
+
+    if (aDays != bDays) return (aDays > bDays) ? 1 : -1;
+    if (ah != bh) return (ah > bh) ? 1 : -1;
+    if (am != bm) return (am > bm) ? 1 : -1;
+    return 0;
+}
+
 void loadMessagesFromSD() {
     if (!SD.exists("/msg")) {
         Serial.println("No /msg directory found");
@@ -232,6 +379,8 @@ void loadMessagesFromSD() {
         Serial.print("Loading: ");
         Serial.println(phone);
 
+        
+
         while (entry.available()) {
             String line = entry.readStringUntil('\n');
             line.trim();
@@ -260,6 +409,7 @@ void loadMessagesFromSD() {
             copyBounded(phoneBuf, storedPhone.c_str(),  MAX_PHONE_LEN);
 
             // push into RAM — but mark as already saved so it doesn't write back to SD
+            // Also need to mark as read
             int idx = findThreadByPhone(phoneBuf);
             if (idx == -1) {
                 if (threadTop + 1 >= MAX_CONVERSATIONS) continue;
@@ -267,6 +417,7 @@ void loadMessagesFromSD() {
                 idx = threadTop;
                 copyBounded(threads[idx].phoneNumber, phoneBuf, MAX_PHONE_LEN);
                 threads[idx].lastMessageIndex = -1;
+                threads[idx].readThread = true;
             }
 
             MessageThread& t = threads[idx];
@@ -282,6 +433,35 @@ void loadMessagesFromSD() {
         entry.close();
     }
     dir.close();
+
+    // SD.openNextFile() hands threads back in whatever order the filesystem
+    // happens to store them — no relation to actual recency. Live operation
+    // always keeps the most-recently-active thread at threadTop
+    // (pushMessage() -> moveThreadToTop() on every new message), so bring a
+    // fresh SD load in line with that same invariant: find whichever loaded
+    // thread's own most recent message (messages[lastMessageIndex], the
+    // last one appended per-file above) has the latest timestamp, and let
+    // that thread's idx become threadTop.
+    if (threadTop >= 0) {
+        // compareTimestamps() needs the RAW modem format here (to get an
+        // actual reference date), not formatTimestamp()'s output — see
+        // messages.h. If the modem doesn't answer, pass "" so every
+        // comparison below just falls through as "equal" (no reordering)
+        // instead of misusing a display-formatted string as if it were raw.
+        char now[32];
+        bool haveNow = getCurrentRawTimestamp(now, sizeof(now));
+
+        int newestIdx = 0;
+        for (int i = 1; i <= threadTop; i++) {
+            const char* a = threads[i].messages[threads[i].lastMessageIndex].timestamp;
+            const char* b = threads[newestIdx].messages[threads[newestIdx].lastMessageIndex].timestamp;
+            if (compareTimestamps(a, b, haveNow ? now : "") > 0) {
+                newestIdx = i;
+            }
+        }
+        moveThreadToTop(newestIdx);
+    }
+
     Serial.println("Messages loaded from SD");
 }
 
@@ -357,10 +537,26 @@ bool convoReplyBtnPressed(const ScreenPoint& sp) {
   return convoReplyBtn.isClicked(sp);
 }
 
+bool convoRxBtnPressed(const ScreenPoint& sp) {
+  return convoRxBtn.isClicked(sp);
+}
+
 const char* getConversationPhone(int selection) {
   int idx = threadTop - selection;
   if (idx < 0 || idx > threadTop) return nullptr;
   return threads[idx].phoneNumber;
+}
+
+int getConversationSelectionByPhone(const char* phone) {
+  int idx = findThreadByPhone(phone);
+  if (idx == -1) return -1;
+  return threadTop - idx;
+}
+
+int getConversationMessageCount(const char* phone) {
+  int idx = findThreadByPhone(phone);
+  if (idx == -1) return 0;
+  return threads[idx].lastMessageIndex + 1;
 }
 
 void recentMessagesReset() {
@@ -371,6 +567,8 @@ void recentMessagesReset() {
 void conversationReset() {
   conversationDrawn = false;
   convoScrollOffset = 0;  // always reopen a thread scrolled to the newest message
+  convoFlippedIdx = -1;
+  convoPressIdx = -1;
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -452,6 +650,10 @@ int recentMessagesScreen(const ScreenPoint& sp, bool justPressed) {
         copyBounded(preview, t.messages[t.lastMessageIndex].body, sizeof(preview));
         tft.setCursor(x, y + 28);
         tft.print(preview);
+
+        if(t.readThread == false){
+          tft.fillCircle(220, threadBtns[i].y + threadBtns[i].height/2, 4, UI_DANGER);
+        }
       }
 
       tft.drawFastHLine(8, y + rowH, w - 8, UI_BORDER);
@@ -487,7 +689,17 @@ int recentMessagesScreen(const ScreenPoint& sp, bool justPressed) {
 // Conversation screen
 // -------------------------------------------------------------------------------------------------
 
-bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPressed) {
+// Rebuilds the raw modem-format string ("yy/MM/dd,hh:mm:ss±zz") a message's
+// packed rawYear/rawMonth/rawDay/rawHour/rawMinute fields encode, for
+// handing to UI.cpp's formatFullTimestamp() (which takes that raw shape,
+// same as formatTimestamp()). Caller must have already checked
+// msg.hasRawTime.
+static void reconstructRawTimestamp(const Msg& msg, char* out, size_t outSize) {
+    snprintf(out, outSize, "%02d/%02d/%02d,%02d:%02d:00+00",
+             msg.rawYear, msg.rawMonth, msg.rawDay, msg.rawHour, msg.rawMinute);
+}
+
+bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPressed, bool touched) {
   const int headerEndY     = 50;    // back button + contact name — stays fixed, never scrolls
   const int msgRegionTop   = headerEndY;
 
@@ -516,6 +728,11 @@ bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPresse
 
     convoBackBtn.initButton(0, 0, 32, 32, "<");
 
+    // Top-right RX button — same size/corner treatment as the back button,
+    // mirrored to the opposite corner, so checking for new messages doesn't
+    // require backing all the way out to the main menu mid-conversation.
+    convoRxBtn.initButton(tft.width() - 40, 0, 32, 32, "RX");
+
     uiUseTitleFont();
     tft.setTextColor(UI_TEXT);
     tft.setCursor(40, 20);
@@ -535,14 +752,36 @@ bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPresse
     int oldestVisible = newestIdx + 1;  // decremented as messages are fit in below
 
     for (int i = newestIdx; i >= 0; i--) {
+      // Bubble size is always based on the body text, whether or not this
+      // bubble is currently flipped — otherwise flipping one bubble would
+      // resize it and shove every other bubble on screen around, which
+      // would look broken. Only the drawn text content changes.
       int lines = measureMessageLines(t.messages[i].body, bubbleWidth - 2 * bubblePadding);
       int h = lines * lineHeight + 2 * bubblePadding;
 
       if (y - h < msgRegionTop) break;  // no more room — rest is reachable only by scrolling
 
       y -= h;
+
+      // Held-and-flipped bubble shows its full date + time instead of its
+      // body.
+      const char* displayText = t.messages[i].body;
+      char full[32];
+      if (i == convoFlippedIdx) {
+        if (t.messages[i].hasRawTime) {
+          char raw[24];
+          reconstructRawTimestamp(t.messages[i], raw, sizeof(raw));
+          formatFullTimestamp(raw, full, sizeof(full));
+        } else {
+          // No raw time available (message loaded from a prior session) —
+          // fall back to whichever abbreviated form was already stored.
+          copyBounded(full, t.messages[i].timestamp, sizeof(full));
+        }
+        displayText = full;
+      }
+
       convoMsgBtns[i].initMsgButton(bubbleMarginX, y, bubbleWidth, h,
-                                    t.messages[i].body, t.messages[i].dir, t.messages[i].kept);
+                                    displayText, t.messages[i].dir, t.messages[i].kept);
       oldestVisible = i;
       y -= bubbleGapY;
     }
@@ -575,10 +814,58 @@ bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPresse
     tft.setTextColor(UI_TEXT_DIM);
     tft.setCursor(8, replyBarY + 8);
     tft.print("");
-    tft.drawFastVLine(8, replyBarY + 8, 20, tft.color565(0,  122, 255));
+    tft.drawFastVLine(8, replyBarY + 8, 20, UI_ACCENT);
     tft.setFont(NULL);
 
     conversationDrawn = true;
+  }
+
+  // ── Bubble press/hold/release tracking — runs every frame (not just on
+  // justPressed), since noticing a 2-second hold means watching the touch
+  // persist across many loop() iterations, not just the instant it lands.
+  // "kept" now toggles on RELEASE rather than touch-down: that's what lets
+  // an ordinary tap be told apart from the start of a hold, so a hold
+  // doesn't ALSO toggle kept along the way.
+  if (touched) {
+    int overIdx = -1;
+    for (int i = convoVisibleTop; i <= convoVisibleBottom; i++) {
+      if (convoMsgBtns[i].isClicked(sp)) { overIdx = i; break; }
+    }
+
+    if (justPressed) {
+      convoPressIdx = overIdx;
+      convoPressStartMillis = millis();
+      convoLongPressFired = false;
+    } else if (overIdx != convoPressIdx) {
+      // Finger dragged off whatever bubble it started on — abandon
+      // tracking so lifting elsewhere doesn't act on it.
+      convoPressIdx = -1;
+    } else if (convoPressIdx != -1 && !convoLongPressFired &&
+               millis() - convoPressStartMillis >= CONVO_LONG_PRESS_MS) {
+      // Held long enough on the same bubble — flip it (hold again to flip
+      // back) and mark this press "consumed" so release below won't also
+      // toggle kept.
+      convoFlippedIdx = (convoFlippedIdx == convoPressIdx) ? -1 : convoPressIdx;
+      convoLongPressFired = true;
+      conversationDrawn = false;
+    }
+  } else if (convoPressIdx != -1) {
+    // Finger just lifted. If this press never crossed the long-press
+    // threshold, it was an ordinary tap.
+    if (!convoLongPressFired) {
+      int i = convoPressIdx;
+      t.messages[i].kept = !t.messages[i].kept;
+
+      if (t.messages[i].kept) {
+        saveMessageToSD(t.phoneNumber, t.messages[i]);
+      } else {
+        unsaveMessageFromSD(t.phoneNumber, i);
+        t.messages[i].saved = false;
+      }
+
+      conversationDrawn = false;
+    }
+    convoPressIdx = -1;
   }
 
   if (!justPressed) return true;
@@ -593,25 +880,6 @@ bool drawConversationToTFT(int selection, const ScreenPoint& sp, bool justPresse
     convoScrollOffset--;
     conversationDrawn = false;
     return true;
-  }
-
-  // ── Tap a bubble to toggle its "kept" indicator ──
-  for (int i = convoVisibleTop; i <= convoVisibleBottom; i++) {
-
-    if (convoMsgBtns[i].isClicked(sp)) {
-        t.messages[i].kept = !t.messages[i].kept;
-        
-        if (t.messages[i].kept) {
-            saveMessageToSD(t.phoneNumber, t.messages[i]);  // ← fixed index
-        } else {
-            unsaveMessageFromSD(t.phoneNumber, i);
-            t.messages[i].saved = false;
-        }
-        
-        conversationDrawn = false;
-        return true;
-    }
-    
   }
 
   return true;
@@ -663,7 +931,7 @@ static void moveThreadToTop(int idx) {
 // Public storage API
 // -------------------------------------------------------------------------------------------------
 
-void pushMessage(const char* phone, const char* text, MsgDir dir, const char* time) {
+void pushMessage(const char* phone, const char* text, MsgDir dir, const char* time, const char* rawTime) {
   int idx = findThreadByPhone(phone);
 
   
@@ -706,11 +974,24 @@ void pushMessage(const char* phone, const char* text, MsgDir dir, const char* ti
     t.messages[t.lastMessageIndex].dir = dir;
 
     // Also set the message as being read to state false
-    // This is neccesary because unread messages will be automatically saved to prevent persons from losing 
-    // messages they havent even seen yet. 
+    // This is neccesary because unread messages will be automatically saved to prevent persons from losing
+    // messages they havent even seen yet.
     t.messages[t.lastMessageIndex].read = false;
 
-  
+    // Pack the raw date/time for the double-tap full-timestamp reveal (see
+    // Msg::hasRawTime in messages.h) — same "yy/MM/dd,hh:mm:ss±zz" shape
+    // UI.cpp's parseRawTimestamp() reads.
+    Msg& newMsg = t.messages[t.lastMessageIndex];
+    if (rawTime && strlen(rawTime) >= 14) {
+        newMsg.hasRawTime = true;
+        newMsg.rawYear   = (uint8_t)((rawTime[0]-'0')*10 + (rawTime[1]-'0'));
+        newMsg.rawMonth  = (uint8_t)((rawTime[3]-'0')*10 + (rawTime[4]-'0'));
+        newMsg.rawDay    = (uint8_t)((rawTime[6]-'0')*10 + (rawTime[7]-'0'));
+        newMsg.rawHour   = (uint8_t)((rawTime[9]-'0')*10 + (rawTime[10]-'0'));
+        newMsg.rawMinute = (uint8_t)((rawTime[12]-'0')*10 + (rawTime[13]-'0'));
+    } else {
+        newMsg.hasRawTime = false;
+    }
 
     // copy message into a file of a specific phone number with all msgs in conversation
 
