@@ -1,0 +1,4 @@
+(sym_lib_table
+  (version 0)
+  (lib (name "Buck_5v_sparkfun-eagle-import")(type "KiCad")(uri "${KIPRJMOD}/Buck_5v_sparkfun-eagle-import.kicad_sym")(options "")(descr ""))
+)
