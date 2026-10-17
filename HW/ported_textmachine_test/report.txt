@@ -1,0 +1,195 @@
+Info: Processing symbol 'C33:ported_textmachine_test:RESC1005X35N'.
+Info: Processing symbol 'D4:ported_textmachine_test:SOD-123'.
+Info: Processing symbol 'R6:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'D3:ported_textmachine_test:DIOM5336X265N'.
+Info: Processing symbol 'R7:ported_textmachine_test:0402-1005X55N'.
+Info: Processing symbol 'D1:ported_textmachine_test:DIOM5336X265N'.
+Info: Processing symbol 'R8:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'CHG0:ported_textmachine_test:CHIPLED_0805_NOOUTLINE'.
+Info: Processing symbol 'R9:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'C35:ported_textmachine_test:RESC1005X35N'.
+Info: Processing symbol 'R10:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'C34:ported_textmachine_test:CAPC1005X60'.
+Info: Processing symbol 'R11:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'R5:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'R12:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'C32:ported_textmachine_test:CAPC1005X60'.
+Info: Processing symbol 'R13:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'C31:ported_textmachine_test:C1210'.
+Info: Processing symbol 'R14:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'C30:ported_textmachine_test:RESC1005X35N'.
+Info: Processing symbol 'R15:ported_textmachine_test:RESC6331X80N'.
+Info: Processing symbol 'C29:ported_textmachine_test:_0402'.
+Info: Processing symbol 'R16:ported_textmachine_test:0402-1005X55N'.
+Info: Processing symbol 'C28:ported_textmachine_test:_0402'.
+Info: Processing symbol 'S1:ported_textmachine_test:SW_PCM13SMTR'.
+Info: Processing symbol 'C27:ported_textmachine_test:_0402'.
+Info: Processing symbol 'J1:ported_textmachine_test:CUI_SJ2-35984E-SMT-TR'.
+Info: Processing symbol 'JP6:ported_textmachine_test:JP1'.
+Info: Processing symbol 'JP7:ported_textmachine_test:JP1'.
+Info: Processing symbol 'JP5:ported_textmachine_test:JP1'.
+Info: Processing symbol 'L0:ported_textmachine_test:MICROBUILDER_CHIPLED_0603'.
+Info: Processing symbol 'JP4:ported_textmachine_test:JP1'.
+Info: Processing symbol 'LED1:ported_textmachine_test:LUXEON_REBEL'.
+Info: Processing symbol 'JP3:ported_textmachine_test:JP1'.
+Info: Processing symbol 'LS1:ported_textmachine_test:SPKR_CMS-151135-078S-67'.
+Info: Processing symbol 'JP2:ported_textmachine_test:JP1'.
+Info: Processing symbol 'M2:ported_textmachine_test:WM-61A'.
+Info: Processing symbol 'JP1:ported_textmachine_test:JP1'.
+Info: Processing symbol 'NETSTAT1:ported_textmachine_test:CHIPLED_0805_NOOUTLINE'.
+Info: Processing symbol 'S2:ported_textmachine_test:SW_EVQ-P7L01P'.
+Info: Processing symbol 'NETSTAT2:ported_textmachine_test:CHIPLED_0805_NOOUTLINE'.
+Info: Processing symbol 'IC1:ported_textmachine_test:TQFN44_7MM'.
+Info: Processing symbol 'Q5:ported_textmachine_test:PWR_SC70-6L2'.
+Info: Processing symbol 'D12:ported_textmachine_test:DIOM5336X265N'.
+Info: Processing symbol 'R1:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'D11:ported_textmachine_test:DIOM5336X265N'.
+Info: Processing symbol 'R2:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'D9:ported_textmachine_test:DIOM5336X265N'.
+Info: Processing symbol 'R3:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'D7:ported_textmachine_test:DIOM5336X265N'.
+Info: Processing symbol 'R4:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'D5:ported_textmachine_test:SOD-123'.
+Info: Processing symbol 'C9:ported_textmachine_test:_0805MP'.
+Info: Processing symbol 'C17:ported_textmachine_test:CAPC1005X60'.
+Info: Processing symbol 'X6:ported_textmachine_test:JSTPH2'.
+Info: Processing symbol 'C16:ported_textmachine_test:0805-NO'.
+Info: Processing symbol 'Y1:ported_textmachine_test:OSC_CSTNE8M00GH5C000R0'.
+Info: Processing symbol 'C15:ported_textmachine_test:0805-NO'.
+Info: Processing symbol 'C13:ported_textmachine_test:0805-NO'.
+Info: Processing symbol 'C12:ported_textmachine_test:CAPC1608X85'.
+Info: Processing symbol 'C11:ported_textmachine_test:CAPC1005X60'.
+Info: Processing symbol 'C10:ported_textmachine_test:CAPC1005X60'.
+Info: Processing symbol 'C14:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'C8:ported_textmachine_test:0805-NO'.
+Info: Processing symbol 'C7:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'C6:ported_textmachine_test:0805-NO'.
+Info: Processing symbol 'C5:ported_textmachine_test:0805-NO'.
+Info: Processing symbol 'C4:ported_textmachine_test:C1210'.
+Info: Processing symbol 'C3:ported_textmachine_test:0805-NO'.
+Info: Processing symbol 'C2:ported_textmachine_test:0805-NO'.
+Info: Processing symbol 'C1:ported_textmachine_test:CAPC1005X60'.
+Info: Processing symbol 'C22:ported_textmachine_test:RESC1005X35N'.
+Info: Processing symbol 'C26:ported_textmachine_test:_0402'.
+Info: Processing symbol 'SIM2:ported_textmachine_test:MICROSIM8'.
+Info: Processing symbol 'C25:ported_textmachine_test:_0402'.
+Info: Processing symbol 'SV1:ported_textmachine_test:MA08-2'.
+Info: Processing symbol 'C24:ported_textmachine_test:CAPC1005X60'.
+Info: Processing symbol 'U2:ported_textmachine_test:SOT23-5'.
+Info: Processing symbol 'C23:ported_textmachine_test:CAPC1005X60'.
+Info: Processing symbol 'U3:ported_textmachine_test:SOT23-5'.
+Info: Processing symbol 'X3:ported_textmachine_test:CONN_2173157-3'.
+Info: Processing symbol 'U4:ported_textmachine_test:XCVR_LARA-R2'.
+Info: Processing symbol 'C21:ported_textmachine_test:_0402'.
+Info: Processing symbol 'C18:ported_textmachine_test:CAPC1005X60'.
+Info: Processing symbol 'U5:ported_textmachine_test:QFN50P400X400X75-25N'.
+Info: Processing symbol 'X2:ported_textmachine_test:332-06'.
+Info: Processing symbol 'C19:ported_textmachine_test:_0402'.
+Info: Processing symbol 'C20:ported_textmachine_test:CAPC1005X60'.
+Info: Processing symbol 'U6:ported_textmachine_test:SOP65P640X120-16N'.
+Warning: Via connected to unknown net (N$30).
+Warning: Via connected to unknown net (N$29).
+Warning: Via connected to unknown net (N$28).
+Warning: Via connected to unknown net (N$25).
+Warning: Via connected to unknown net (D-).
+Warning: Via connected to unknown net (N$23).
+Warning: Via connected to unknown net (N$10).
+Warning: Via connected to unknown net (N$22).
+Warning: Via connected to unknown net (D+).
+Warning: Via connected to unknown net (N$20).
+Warning: Via connected to unknown net (N$20).
+Warning: Via connected to unknown net (N$3).
+Warning: Via connected to unknown net (N$20).
+Warning: Via connected to unknown net (N$13).
+Error: Cannot add C24 (footprint 'ported_textmachine_test:CAPC1005X60' not found).
+Error: Cannot add U6 (footprint 'ported_textmachine_test:SOP65P640X120-16N' not found).
+Error: Cannot add C19 (footprint 'ported_textmachine_test:_0402' not found).
+Error: Cannot add U5 (footprint 'ported_textmachine_test:QFN50P400X400X75-25N' not found).
+Error: Cannot add C20 (footprint 'ported_textmachine_test:CAPC1005X60' not found).
+Error: Cannot add U4 (footprint 'ported_textmachine_test:XCVR_LARA-R2' not found).
+Error: Cannot add C21 (footprint 'ported_textmachine_test:_0402' not found).
+Error: Cannot add U3 (footprint 'ported_textmachine_test:SOT23-5' not found).
+Error: Cannot add C22 (footprint 'ported_textmachine_test:RESC1005X35N' not found).
+Error: Cannot add U2 (footprint 'ported_textmachine_test:SOT23-5' not found).
+Error: Cannot add C23 (footprint 'ported_textmachine_test:CAPC1005X60' not found).
+Error: Cannot add SV1 (footprint 'ported_textmachine_test:MA08-2' not found).
+Error: Cannot add C18 (footprint 'ported_textmachine_test:CAPC1005X60' not found).
+Error: Cannot add SIM2 (footprint 'ported_textmachine_test:MICROSIM8' not found).
+Error: Cannot add C25 (footprint 'ported_textmachine_test:_0402' not found).
+Error: Cannot add S2 (footprint 'ported_textmachine_test:SW_EVQ-P7L01P' not found).
+Error: Cannot add C26 (footprint 'ported_textmachine_test:_0402' not found).
+Error: Cannot add S1 (footprint 'ported_textmachine_test:SW_PCM13SMTR' not found).
+Error: Cannot add C27 (footprint 'ported_textmachine_test:_0402' not found).
+Error: Cannot add R16 (footprint 'ported_textmachine_test:0402-1005X55N' not found).
+Error: Cannot add C28 (footprint 'ported_textmachine_test:_0402' not found).
+Error: Cannot add R15 (footprint 'ported_textmachine_test:RESC6331X80N' not found).
+Error: Cannot add C29 (footprint 'ported_textmachine_test:_0402' not found).
+Error: Cannot add C11 (footprint 'ported_textmachine_test:CAPC1005X60' not found).
+Error: Cannot add C1 (footprint 'ported_textmachine_test:CAPC1005X60' not found).
+Error: Cannot add C2 (footprint 'ported_textmachine_test:0805-NO' not found).
+Error: Cannot add C3 (footprint 'ported_textmachine_test:0805-NO' not found).
+Error: Cannot add C4 (footprint 'ported_textmachine_test:C1210' not found).
+Error: Cannot add C5 (footprint 'ported_textmachine_test:0805-NO' not found).
+Error: Cannot add C6 (footprint 'ported_textmachine_test:0805-NO' not found).
+Error: Cannot add C7 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add C8 (footprint 'ported_textmachine_test:0805-NO' not found).
+Error: Cannot add C9 (footprint 'ported_textmachine_test:_0805MP' not found).
+Error: Cannot add C10 (footprint 'ported_textmachine_test:CAPC1005X60' not found).
+Error: Cannot add R14 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add C12 (footprint 'ported_textmachine_test:CAPC1608X85' not found).
+Error: Cannot add C13 (footprint 'ported_textmachine_test:0805-NO' not found).
+Error: Cannot add C14 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add Y1 (footprint 'ported_textmachine_test:OSC_CSTNE8M00GH5C000R0' not found).
+Error: Cannot add C15 (footprint 'ported_textmachine_test:0805-NO' not found).
+Error: Cannot add X6 (footprint 'ported_textmachine_test:JSTPH2' not found).
+Error: Cannot add C16 (footprint 'ported_textmachine_test:0805-NO' not found).
+Error: Cannot add X3 (footprint 'ported_textmachine_test:CONN_2173157-3' not found).
+Error: Cannot add C17 (footprint 'ported_textmachine_test:CAPC1005X60' not found).
+Error: Cannot add X2 (footprint 'ported_textmachine_test:332-06' not found).
+Error: Cannot add J1 (footprint 'ported_textmachine_test:CUI_SJ2-35984E-SMT-TR' not found).
+Error: Cannot add D7 (footprint 'ported_textmachine_test:DIOM5336X265N' not found).
+Error: Cannot add R2 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add D9 (footprint 'ported_textmachine_test:DIOM5336X265N' not found).
+Error: Cannot add R1 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add D11 (footprint 'ported_textmachine_test:DIOM5336X265N' not found).
+Error: Cannot add Q5 (footprint 'ported_textmachine_test:PWR_SC70-6L2' not found).
+Error: Cannot add D12 (footprint 'ported_textmachine_test:DIOM5336X265N' not found).
+Error: Cannot add NETSTAT2 (footprint 'ported_textmachine_test:CHIPLED_0805_NOOUTLINE' not found).
+Error: Cannot add IC1 (footprint 'ported_textmachine_test:TQFN44_7MM' not found).
+Error: Cannot add NETSTAT1 (footprint 'ported_textmachine_test:CHIPLED_0805_NOOUTLINE' not found).
+Error: Cannot add R3 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add M2 (footprint 'ported_textmachine_test:WM-61A' not found).
+Error: Cannot add JP1 (footprint 'ported_textmachine_test:JP1' not found).
+Error: Cannot add LS1 (footprint 'ported_textmachine_test:SPKR_CMS-151135-078S-67' not found).
+Error: Cannot add JP2 (footprint 'ported_textmachine_test:JP1' not found).
+Error: Cannot add LED1 (footprint 'ported_textmachine_test:LUXEON_REBEL' not found).
+Error: Cannot add JP3 (footprint 'ported_textmachine_test:JP1' not found).
+Error: Cannot add L0 (footprint 'ported_textmachine_test:MICROBUILDER_CHIPLED_0603' not found).
+Error: Cannot add JP4 (footprint 'ported_textmachine_test:JP1' not found).
+Error: Cannot add JP7 (footprint 'ported_textmachine_test:JP1' not found).
+Error: Cannot add JP5 (footprint 'ported_textmachine_test:JP1' not found).
+Error: Cannot add C35 (footprint 'ported_textmachine_test:RESC1005X35N' not found).
+Error: Cannot add C30 (footprint 'ported_textmachine_test:RESC1005X35N' not found).
+Error: Cannot add R13 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add C31 (footprint 'ported_textmachine_test:C1210' not found).
+Error: Cannot add R12 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add C32 (footprint 'ported_textmachine_test:CAPC1005X60' not found).
+Error: Cannot add R11 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add C33 (footprint 'ported_textmachine_test:RESC1005X35N' not found).
+Error: Cannot add R10 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add C34 (footprint 'ported_textmachine_test:CAPC1005X60' not found).
+Error: Cannot add R9 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add JP6 (footprint 'ported_textmachine_test:JP1' not found).
+Error: Cannot add R8 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add CHG0 (footprint 'ported_textmachine_test:CHIPLED_0805_NOOUTLINE' not found).
+Error: Cannot add R7 (footprint 'ported_textmachine_test:0402-1005X55N' not found).
+Error: Cannot add D1 (footprint 'ported_textmachine_test:DIOM5336X265N' not found).
+Error: Cannot add R6 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add D3 (footprint 'ported_textmachine_test:DIOM5336X265N' not found).
+Error: Cannot add R5 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add D4 (footprint 'ported_textmachine_test:SOD-123' not found).
+Error: Cannot add R4 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add D5 (footprint 'ported_textmachine_test:SOD-123' not found).
+
+
+Info: Total warnings: 14, errors: 89.

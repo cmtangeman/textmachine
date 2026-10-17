@@ -1,0 +1,138 @@
+Info: Processing symbol 'D9:ported_textmachine_test:DIOM5336X265N'.
+Info: Processing symbol 'R8:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'R2:ported_textmachine_test:0603-NO'.
+Info: Processing symbol 'R15:ported_textmachine_test:RESC6331X80N'.
+Info: Processing symbol 'LED1:ported_textmachine_test:LUXEON_REBEL'.
+Info: Processing symbol 'C3:ported_textmachine_test:0805-NO'.
+Info: Processing symbol 'D12:ported_textmachine_test:DIOM5336X265N'.
+Info: Processing symbol 'D11:ported_textmachine_test:DIOM5336X265N'.
+Info: Processing symbol 'S1:ported_textmachine_test:SW_PCM13SMTR'.
+Info: Processing symbol 'D7:ported_textmachine_test:DIOM5336X265N'.
+Info: Processing symbol 'U3:ported_textmachine_test:SOT23-5'.
+Info: Processing symbol 'D3:ported_textmachine_test:DIOM5336X265N'.
+Info: Processing symbol 'D1:ported_textmachine_test:DIOM5336X265N'.
+Info: Processing symbol 'X2:ported_textmachine_test:332-06'.
+Info: Processing symbol 'CHG0:ported_textmachine_test:CHIPLED_0805_NOOUTLINE'.
+Warning: Via connected to unknown net (VSIM).
+Warning: Via connected to unknown net (GPIO6_CODEC_CLK).
+Warning: Via connected to unknown net (VSIM).
+Warning: Via connected to unknown net (VSIM).
+Warning: Via connected to unknown net (SCL).
+Warning: Via connected to unknown net (N$20).
+Warning: Via connected to unknown net (SCL).
+Warning: Via connected to unknown net (SDA).
+Warning: Via connected to unknown net (SDA).
+Warning: Via connected to unknown net (SDA).
+Warning: Via connected to unknown net (SDA).
+Warning: Via connected to unknown net (CODEC_BIAS).
+Warning: Via connected to unknown net (N$10).
+Warning: Via connected to unknown net (N$13).
+Warning: Via connected to unknown net (V_INT).
+Warning: Via connected to unknown net (GPIO6_CODEC_CLK).
+Warning: Via connected to unknown net (I2S_WA).
+Warning: Via connected to unknown net (I2S_WA).
+Warning: Via connected to unknown net (I2S_TXD).
+Warning: Via connected to unknown net (I2S_TXD).
+Warning: Via connected to unknown net (I2S_RXD).
+Warning: Via connected to unknown net (I2S_RXD).
+Warning: Via connected to unknown net (I2S_CLK).
+Warning: Via connected to unknown net (I2S_CLK).
+Warning: Via connected to unknown net (6_UART_RTS).
+Warning: Via connected to unknown net (6_UART_RTS).
+Warning: Via connected to unknown net (6_UART_RTS).
+Warning: Via connected to unknown net (9_UART_RXD).
+Warning: Via connected to unknown net (9_UART_RXD).
+Warning: Via connected to unknown net (9_UART_RXD).
+Warning: Via connected to unknown net (M_PWR_ON_PRE).
+Warning: Via connected to unknown net (5_UART_CTS).
+Warning: Via connected to unknown net (5_UART_CTS).
+Warning: Via connected to unknown net (5_UART_CTS).
+Warning: Via connected to unknown net (5_UART_CTS).
+Warning: Via connected to unknown net (5_UART_CTS).
+Warning: Via connected to unknown net (UART_CTS).
+Warning: Via connected to unknown net (UART_CTS).
+Warning: Via connected to unknown net (UART_CTS).
+Warning: Via connected to unknown net (N$30).
+Warning: Via connected to unknown net (N$29).
+Warning: Via connected to unknown net (N$28).
+Warning: Via connected to unknown net (M_RESET_N).
+Warning: Via connected to unknown net (M_RESET_N).
+Warning: Via connected to unknown net (M_PWR_ON_PRE).
+Warning: Via connected to unknown net (N$20).
+Warning: Via connected to unknown net (M_PWR_ON).
+Warning: Via connected to unknown net (M_PWR_ON).
+Warning: Via connected to unknown net (N$25).
+Warning: Via connected to unknown net (UART_TXD).
+Warning: Via connected to unknown net (V_INT).
+Warning: Via connected to unknown net (V_INT).
+Warning: Via connected to unknown net (V_INT).
+Warning: Via connected to unknown net (SIMCLK).
+Warning: Via connected to unknown net (V_INT).
+Warning: Via connected to unknown net (V_INT).
+Warning: Via connected to unknown net (V_INT).
+Warning: Via connected to unknown net (N$23).
+Warning: Via connected to unknown net (N$22).
+Warning: Via connected to unknown net (N$20).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (13).
+Warning: Via connected to unknown net (13).
+Warning: Via connected to unknown net (13).
+Warning: Via connected to unknown net (AREF).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (8_UART_TXD).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (+3V3).
+Warning: Via connected to unknown net (RST).
+Warning: Via connected to unknown net (RST).
+Warning: Via connected to unknown net (RST).
+Warning: Via connected to unknown net (D+).
+Warning: Via connected to unknown net (D-).
+Warning: Via connected to unknown net (13).
+Warning: Via connected to unknown net (8_UART_TXD).
+Warning: Via connected to unknown net (8_UART_TXD).
+Warning: Via connected to unknown net (UART_RTS).
+Warning: Via connected to unknown net (UART_RXD).
+Warning: Via connected to unknown net (SIMDATA).
+Warning: Via connected to unknown net (SIMDATA).
+Warning: Via connected to unknown net (SIMDATA).
+Warning: Via connected to unknown net (SIMCLK).
+Warning: Via connected to unknown net (SIMCLK).
+Warning: Via connected to unknown net (SIMCLK).
+Warning: Via connected to unknown net (SIMRST).
+Warning: Via connected to unknown net (SIMCLK).
+Warning: Via connected to unknown net (13).
+Warning: Via connected to unknown net (13).
+Warning: Via connected to unknown net (N$3).
+Warning: Via connected to unknown net (NETSTAT1).
+Warning: Via connected to unknown net (NETSTAT1).
+Warning: Via connected to unknown net (NETSTAT2).
+Warning: Via connected to unknown net (NETSTAT2).
+Warning: Via connected to unknown net (SIMRST).
+Warning: Via connected to unknown net (SIMRST).
+Error: Cannot add C3 (footprint 'ported_textmachine_test:0805-NO' not found).
+Error: Cannot add CHG0 (footprint 'ported_textmachine_test:CHIPLED_0805_NOOUTLINE' not found).
+Error: Cannot add D1 (footprint 'ported_textmachine_test:DIOM5336X265N' not found).
+Error: Cannot add D3 (footprint 'ported_textmachine_test:DIOM5336X265N' not found).
+Error: Cannot add D7 (footprint 'ported_textmachine_test:DIOM5336X265N' not found).
+Error: Cannot add D9 (footprint 'ported_textmachine_test:DIOM5336X265N' not found).
+Error: Cannot add D11 (footprint 'ported_textmachine_test:DIOM5336X265N' not found).
+Error: Cannot add D12 (footprint 'ported_textmachine_test:DIOM5336X265N' not found).
+Error: Cannot add LED1 (footprint 'ported_textmachine_test:LUXEON_REBEL' not found).
+Error: Cannot add R2 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add R8 (footprint 'ported_textmachine_test:0603-NO' not found).
+Error: Cannot add R15 (footprint 'ported_textmachine_test:RESC6331X80N' not found).
+Error: Cannot add S1 (footprint 'ported_textmachine_test:SW_PCM13SMTR' not found).
+Error: Cannot add U3 (footprint 'ported_textmachine_test:SOT23-5' not found).
+Error: Cannot add X2 (footprint 'ported_textmachine_test:332-06' not found).
+
+
+Info: Total warnings: 105, errors: 15.
