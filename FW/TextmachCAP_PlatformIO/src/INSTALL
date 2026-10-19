@@ -1,0 +1,41 @@
+INSTALL - textmachine
+=====================
+
+All libraries can be installed via the Arduino IDE Library Manager:
+  Sketch > Include Library > Manage Libraries
+
+REQUIRED LIBRARIES
+------------------
+
+1. Adafruit GFX Library
+   - Author: Adafruit
+   - Search: "Adafruit GFX"
+   - Contains : Fonts/FreeSans9pt7b.h , Fonts/FreeSansBold9pt7b.h, as well
+
+2. Adafruit ILI9341
+   - Author: Adafruit
+   - Search: "Adafruit ILI9341"
+
+3. MKRNB
+   - Author: Arduino
+   - Search: "MKRNB"
+
+HARDWARE
+--------
+- Arduino MKR NB 1500
+- ILI9341 SPI display
+- FT6336U capacitive touchscreen (I2C, address 0x38)
+- SIM card with SMS capability (tested on Tello / T-Mobile NB-IoT)
+- Antenna tuned for LTE Band 12 (700 MHz)
+
+BUILT-IN LIBRARIES (no install needed)
+---------------------------------------
+- SPI      (included with Arduino IDE)
+- Wire     (included with Arduino IDE)
+- Math     (included with Arduino IDE)
+
+NOTES
+-----
+- Make sure your SIM card supports NB-IoT or LTE-M (Cat-M1)
+- Select "Arduino MKR NB 1500" as your board in the IDE
+- Board package: "Arduino SAMD Boards" via Boards Manager
