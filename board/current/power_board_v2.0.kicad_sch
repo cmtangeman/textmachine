@@ -3439,6 +3439,16 @@
 		)
 		(uuid "0b93cb82-1444-4658-b4b8-4b7c19c8b4b1")
 	)
+	(text "smoothing cap\n"
+		(exclude_from_sim no)
+		(at 203.2 177.546 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+		(uuid "1ce26f9d-5c17-43bb-b54f-8b8cb25a3880")
+	)
 	(text "50 Ohm Impedence required.  There are isolation\ncircuits (cap and inductor) used for dual antennas.\nSince this is single antenna, the isolation circuit is not\nused.  Perhaps this is an error on our part, but the 2G\ndesign with single antenna does not have LC circuit."
 		(exclude_from_sim no)
 		(at 88.9 347.98 0)
@@ -5746,7 +5756,7 @@
 				)
 			)
 		)
-		(property "Value" "C_Polarized"
+		(property "Value" "470u"
 			(at 201.549 176.53 90)
 			(show_name no)
 			(do_not_autoplace no)
