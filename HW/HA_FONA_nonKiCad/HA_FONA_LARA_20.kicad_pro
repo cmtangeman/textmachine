@@ -654,7 +654,7 @@
     "meta": {
       "version": 1
     },
-    "page_layout_descr_file": "empty.kicad_wks",
+    "page_layout_descr_file": "",
     "plot_directory": "",
     "reuse_designators": true,
     "subpart_first_id": 65,
@@ -662,8 +662,8 @@
     "top_level_sheets": [
       {
         "filename": "HA_FONA_LARA_20.kicad_sch",
-        "name": "HA_FONA_LARA_20_1",
-        "uuid": "fdd0ca73-a0ca-4ed0-a651-d324a2189e3d"
+        "name": "",
+        "uuid": "9ee964b2-0750-4cae-a354-b7b77412c4ea"
       }
     ],
     "used_designators": "C1-5,D2,J1-2,Q1,R1,U1",
@@ -671,8 +671,8 @@
   },
   "sheets": [
     [
-      "fdd0ca73-a0ca-4ed0-a651-d324a2189e3d",
-      "HA_FONA_LARA_20_1"
+      "9ee964b2-0750-4cae-a354-b7b77412c4ea",
+      ""
     ]
   ],
   "text_variables": {},
